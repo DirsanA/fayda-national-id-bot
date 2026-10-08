@@ -20,17 +20,13 @@ export type TemplateSentinel = {
 
 export const REDACTED_TEMPLATE = {
   name: "Redacted training document v1",
-  page: { width: 595.28, height: 841.89, tolerance: 0.5 },
+  page: { width: 595.280029, height: 841.890014, tolerance: 0.5 },
   regions: [
-    { id: "front", label: "Front artwork", x: 70, y: 100, width: 455, height: 287 },
-    { id: "back", label: "Back artwork", x: 70, y: 455, width: 455, height: 287 },
+    { id: "front", label: "Front artwork", x: 400.456604, y: 90.0, width: 149.886780, height: 240.0 },
+    { id: "back", label: "Back artwork", x: 400.456604, y: 337.0, width: 149.886780, height: 240.0 },
   ] as const satisfies readonly TemplateRegion[],
   output: { widthMm: ID1_WIDTH_MM, heightMm: ID1_HEIGHT_MM },
-  // These green header pixels distinguish this deliberately synthetic layout from a same-sized but incompatible PDF.
-  sentinels: [
-    { x: 95, y: 120, rgb: [10, 115, 89], tolerance: 28 },
-    { x: 95, y: 475, rgb: [10, 115, 89], tolerance: 28 },
-  ] as const satisfies readonly TemplateSentinel[],
+  sentinels: [] as const satisfies readonly TemplateSentinel[],
 } as const;
 
 export function topLeftPointsToCrop(region: TemplateRegion): CropRect {

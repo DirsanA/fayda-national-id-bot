@@ -3,19 +3,15 @@ import { REDACTED_TEMPLATE, type TemplateRegion } from "./template-config";
 
 function drawSampleRegion(page: PDFPage, region: TemplateRegion, font: PDFFont, bold: PDFFont) {
   const pageHeight = REDACTED_TEMPLATE.page.height;
-  // pdf-lib uses a bottom-left origin. This is deliberately converted from the shared top-left config.
   const y = pageHeight - region.y - region.height;
   const { x, width, height } = region;
   const headerGreen = rgb(10 / 255, 115 / 255, 89 / 255);
-  page.drawRectangle({ x, y, width, height, color: rgb(0.92, 0.98, 0.96), borderColor: headerGreen, borderWidth: 2 });
-  page.drawRectangle({ x, y: y + height - 52, width, height: 52, color: headerGreen });
-  page.drawText(`SAMPLE ${region.id.toUpperCase()} ARTWORK`, { x: x + 20, y: y + height - 33, size: 19, font: bold, color: rgb(1, 1, 1) });
-  page.drawRectangle({ x: x + 22, y: y + 70, width: 110, height: 125, color: rgb(0.76, 0.82, 0.84) });
-  page.drawText("REDACTED", { x: x + 35, y: y + 127, size: 14, font: bold, color: rgb(0.2, 0.25, 0.3) });
-  page.drawText(region.id === "front" ? "Sample Name" : "Sample details", { x: x + 155, y: y + 179, size: 19, font: bold, color: rgb(0.05, 0.12, 0.17) });
-  page.drawText(region.id === "front" ? "0000 0000 0000" : "Synthetic reverse artwork", { x: x + 155, y: y + 148, size: 15, font, color: rgb(0.1, 0.2, 0.25) });
-  page.drawText("Synthetic / redacted card region", { x: x + 155, y: y + 119, size: 12, font, color: rgb(0.2, 0.3, 0.35) });
-  page.drawText("For development and layout testing only", { x: x + 155, y: y + 95, size: 10, font, color: rgb(0.3, 0.38, 0.42) });
+  page.drawRectangle({ x, y, width, height, color: rgb(0.92, 0.98, 0.96), borderColor: headerGreen, borderWidth: 1.5 });
+  page.drawRectangle({ x, y: y + height - 30, width, height: 30, color: headerGreen });
+  page.drawText(`${region.id.toUpperCase()}`, { x: x + 10, y: y + height - 20, size: 12, font: bold, color: rgb(1, 1, 1) });
+  page.drawRectangle({ x: x + 10, y: y + 40, width: width - 20, height: height - 80, color: rgb(0.76, 0.82, 0.84) });
+  page.drawText("REDACTED", { x: x + 25, y: y + (height / 2), size: 14, font: bold, color: rgb(0.2, 0.25, 0.3) });
+  page.drawText("Synthetic artwork region", { x: x + 10, y: y + 15, size: 8, font, color: rgb(0.3, 0.38, 0.42) });
 }
 
 export async function createRedactedSamplePdf(): Promise<File> {
