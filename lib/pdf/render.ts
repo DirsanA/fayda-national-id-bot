@@ -7,14 +7,11 @@ const PDF_POINTS_PER_INCH = 72;
 const MAX_CANVAS_EDGE = 8192;
 
 export async function renderFirstPage(file: File): Promise<RenderedPdf> {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-    "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
-    import.meta.url,
-  ).toString();
+  const pdfjs = await import("pdfjs-dist");
+  pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const loadingTask = pdfjs.getDocument({ data: bytes, useWorkerFetch: false, isEvalSupported: false });
+  const loadingTask = pdfjs.getDocument({ data: bytes });
 
   try {
     const pdf = await loadingTask.promise;
