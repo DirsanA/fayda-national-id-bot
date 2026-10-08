@@ -42,7 +42,7 @@ export function PdfViewer({ file, onRendered }: PdfViewerProps) {
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
       <div className="flex items-center justify-between gap-3"><h3 className="font-semibold">PDF source rendered</h3><span className="text-xs text-slate-600">{rendered.width} × {rendered.height} px · {Math.round(rendered.effectiveDpi)} DPI</span></div>
-      <p className="mt-1 text-sm text-slate-600">Select card artwork directly from this rendered source. No OCR or editable fields are used.</p>
+      <p className="mt-1 text-sm text-slate-600">Validating the fixed redacted-template layout and extracting its configured regions. No OCR or editable fields are used.</p>
     </div>
   );
 }

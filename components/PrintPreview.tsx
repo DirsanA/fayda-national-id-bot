@@ -16,7 +16,8 @@ export function PrintPreview({ pdf }: PrintPreviewProps) {
   return (
     <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-5">
       <h3 className="font-semibold text-emerald-950">Print-ready PDF created</h3>
-      <p className="mt-1 text-sm text-emerald-900">The file contains only the selected source artwork on an ID-1-sized page. In the print dialog, choose “Actual size” or 100%—never “Fit to page.”</p>
+      <p className="mt-1 text-sm text-emerald-900">The file contains only the configured source-artwork regions on ID-1-sized pages. In the print dialog, choose “Actual size” or 100%—never “Fit to page.”</p>
+      <iframe title="Generated print-ready PDF preview" src={url} className="mt-4 h-80 w-full rounded border border-emerald-200 bg-white" />
       <div className="mt-4 flex flex-wrap gap-3">
         <a href={url} download="print-ready-card.pdf" className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">Download print PDF</a>
         <a href={url} target="_blank" rel="noreferrer" className="rounded-lg border border-emerald-700 px-4 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-100">Open print preview</a>
