@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; }
+
+* { box-sizing: border-box; }
+
+body { margin: 0; min-width: 320px; }
+
+button:focus-visible,
+input:focus-visible {
+  outline: 3px solid rgb(59 130 246 / 0.55);
+  outline-offset: 3px;
+}
