@@ -10,29 +10,6 @@ type LandscapeCardFrontProps = {
 };
 
 export function LandscapeCardFront({ data, className = "" }: LandscapeCardFrontProps) {
-  const isReference =
-    !data.fullNameEnglish || data.fullNameEnglish.toLowerCase() === "yosef girma tufa";
-
-  if (isReference) {
-    return (
-      <div
-        className={`relative overflow-hidden rounded-xl border border-slate-300 shadow-md bg-white select-none ${className}`}
-        style={{
-          aspectRatio: "85.6 / 53.98",
-        }}
-        aria-label="Ethiopian Digital ID Card Front"
-      >
-        <img
-          src="/assets/card-front-reference.png"
-          alt="Official Ethiopian Digital ID Card Front"
-          className="w-full h-full object-cover block select-none"
-          draggable={false}
-        />
-      </div>
-    );
-  }
-
-  // Fallback for custom user profiles
   return (
     <div
       className={`relative overflow-hidden rounded-xl border border-slate-300 shadow-md bg-[#D7F5ED] select-none ${className}`}

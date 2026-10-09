@@ -7,29 +7,6 @@ type LandscapeCardBackProps = {
 };
 
 export function LandscapeCardBack({ data, className = "" }: LandscapeCardBackProps) {
-  const isReference =
-    !data.fullNameEnglish || data.fullNameEnglish.toLowerCase() === "yosef girma tufa";
-
-  if (isReference) {
-    return (
-      <div
-        className={`relative overflow-hidden rounded-xl border border-slate-300 shadow-md bg-white select-none ${className}`}
-        style={{
-          aspectRatio: "85.6 / 53.98",
-        }}
-        aria-label="Ethiopian Digital ID Card Back"
-      >
-        <img
-          src="/assets/card-back-reference.png"
-          alt="Official Ethiopian Digital ID Card Back"
-          className="w-full h-full object-cover block select-none"
-          draggable={false}
-        />
-      </div>
-    );
-  }
-
-  // Fallback for custom user profiles
   const qrSource = data.qrCodeUrl || "/assets/target-qr.png";
 
   return (

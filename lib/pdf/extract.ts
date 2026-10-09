@@ -32,113 +32,171 @@ function cropCanvasSubArea(
   return canvas.toDataURL("image/png");
 }
 
+function convertRawImageToDataUrl(img: { width: number; height: number; data: Uint8Array | Uint8ClampedArray }): string | null {
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    const imgData = ctx.createImageData(img.width, img.height);
+    const src = img.data;
+    const dst = imgData.data;
+    const totalPixels = img.width * img.height;
+    if (src.length === totalPixels * 3) {
+      let s = 0;
+      let d = 0;
+      for (let i = 0; i < totalPixels; i++) {
+        dst[d] = src[s];
+        dst[d + 1] = src[s + 1];
+        dst[d + 2] = src[s + 2];
+        dst[d + 3] = 255;
+        s += 3;
+        d += 4;
+      }
+    } else if (src.length === totalPixels * 4) {
+      dst.set(src);
+    } else {
+      return null;
+    }
+    ctx.putImageData(imgData, 0, 0);
+    return canvas.toDataURL("image/png");
+  } catch {
+    return null;
+  }
+}
+
 export async function extractIdDataFromPdf(
   file: File,
   source: RenderedPdf
 ): Promise<EthiopianIdData> {
-  // 1. Read PDF text stream using pdfjs-dist
   const pdfjs = await import("pdfjs-dist");
   pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
   const bytes = new Uint8Array(await file.arrayBuffer());
   const loadingTask = pdfjs.getDocument({ data: bytes });
+
+  let itemsWithPos: Array<{ str: string; x: number; y: number }> = [];
   let extractedText = "";
+  let rawPhotoUrl: string | null = null;
+  let rawQrUrl: string | null = null;
 
   try {
     const pdf = await loadingTask.promise;
     const page = await pdf.getPage(1);
     const textContent = await page.getTextContent();
-    const items = textContent.items as Array<{ str: string }>;
-    extractedText = items.map((it) => it.str).join(" ");
+    const pageHeight = 841.89;
+
+    itemsWithPos = (textContent.items as Array<{ str: string; transform: number[] }>)
+      .map((it) => ({
+        str: it.str.trim(),
+        x: it.transform[4],
+        y: pageHeight - it.transform[5],
+      }))
+      .filter((it) => it.str.length > 0);
+
+    extractedText = itemsWithPos.map((it) => it.str).join(" ");
+
+    // Extract original embedded image objects
+    try {
+      const ops = await page.getOperatorList();
+      for (let i = 0; i < ops.fnArray.length; i++) {
+        // paintImageXObject is operator 85 in pdfjs
+        if (ops.fnArray[i] === 85 || ops.fnArray[i] === (pdfjs as unknown as { OPS: { paintImageXObject: number } }).OPS?.paintImageXObject) {
+          const imgName = ops.argsArray[i][0];
+          await new Promise<void>((resolve) => {
+            page.objs.get(imgName, (img: { width: number; height: number; data: Uint8Array } | null) => {
+              if (img && img.data) {
+                const aspect = img.width / img.height;
+                if (!rawPhotoUrl && aspect >= 0.65 && aspect <= 0.9 && img.width >= 200 && img.height >= 250) {
+                  rawPhotoUrl = convertRawImageToDataUrl(img);
+                } else if (!rawQrUrl && aspect >= 0.95 && aspect <= 1.05 && img.width >= 200) {
+                  rawQrUrl = convertRawImageToDataUrl(img);
+                }
+              }
+              resolve();
+            });
+          });
+        }
+      }
+    } catch {
+      // Continue to canvas crop fallback
+    }
   } catch (err) {
     console.warn("Could not read text content stream:", err);
   } finally {
     await loadingTask.destroy();
   }
 
-  // 2. High-resolution crop of visual assets from rendered 300 DPI canvas
-  // Location of primary portrait photo:
-  // Can be taken from the front card region or demographic panel
-  // Top front card is x: 400.45, y: 90.0, w: 149.88, h: 240.0
-  // Inside front card: Photo is centered at x ~ 432, y ~ 124, w ~ 86, h ~ 98 pt
-  let photoUrl = cropCanvasSubArea(source.canvas, 431, 122, 88, 100);
-
-  // If front card crop seems empty or small, fallback to demographic section photo on the left
+  // Fallback crops from 300 DPI canvas
+  let photoUrl: string = rawPhotoUrl || "";
   if (!photoUrl) {
-    photoUrl = cropCanvasSubArea(source.canvas, 65, 120, 115, 130);
+    photoUrl = cropCanvasSubArea(source.canvas, 431, 122, 88, 100);
+    if (!photoUrl) photoUrl = cropCanvasSubArea(source.canvas, 65, 120, 115, 130);
   }
 
-  // Barcode in front card at bottom: x ~ 412, y ~ 290, w ~ 126, h ~ 28 pt
+  let qrCodeUrl: string = rawQrUrl || "";
+  if (!qrCodeUrl) {
+    qrCodeUrl = cropCanvasSubArea(source.canvas, 417, 370, 116, 116);
+    if (!qrCodeUrl) qrCodeUrl = cropCanvasSubArea(source.canvas, 180, 480, 240, 240);
+  }
+
   const barcodeUrl = cropCanvasSubArea(source.canvas, 412, 290, 126, 28);
 
-  // QR Code in back card: x ~ 417, y ~ 370, w ~ 116, h ~ 116 pt
-  let qrCodeUrl = cropCanvasSubArea(source.canvas, 417, 370, 116, 116);
-  if (!qrCodeUrl) {
-    // Fallback to large QR on the left: x ~ 180, y ~ 480, w ~ 240, h ~ 240 pt
-    qrCodeUrl = cropCanvasSubArea(source.canvas, 180, 480, 240, 240);
-  }
+  // Position-based field queries
+  const findItems = (minX: number, maxX: number, minY: number, maxY: number) =>
+    itemsWithPos.filter((it) => it.x >= minX && it.x <= maxX && it.y >= minY && it.y <= maxY);
 
-  // 3. Parse fields with robust regex extractors
-  // Defaults based on standard Ethiopian National ID format
+  const nameItems = findItems(160, 360, 215, 248);
+  const amharicName = nameItems.find((i) => /[\u1200-\u137F]/.test(i.str))?.str;
+  const englishName = nameItems.find((i) => /^[A-Za-z\s]+$/.test(i.str))?.str;
+
+  const regionItems = findItems(195, 360, 280, 308);
+  const regAmh = regionItems.find((i) => /[\u1200-\u137F]/.test(i.str))?.str;
+  const regEng = regionItems.find((i) => /^[A-Za-z\s]+$/.test(i.str))?.str;
+
+  const subcityItems = findItems(195, 360, 318, 342);
+  const subAmh = subcityItems.find((i) => /[\u1200-\u137F]/.test(i.str))?.str;
+  const subEng = subcityItems.find((i) => /^[A-Za-z\s]+$/.test(i.str))?.str;
+
+  const woredaItems = findItems(195, 360, 348, 372);
+  const worAmh = woredaItems.find((i) => /[\u1200-\u137F]/.test(i.str))?.str;
+  const worEng = woredaItems.find((i) => /^[A-Za-z\s]+$/.test(i.str))?.str;
+
+  const phoneItem = findItems(50, 150, 380, 400)[0]?.str;
+
+  const datesFound = extractedText.match(/\b(\d{2}\/\d{2}\/\d{4})\b/g) || [];
+  const fanMatch = extractedText.match(/\b(\d{4}\s+\d{4}\s+\d{4}\s+\d{4})\b/);
+  const finMatch = extractedText.match(/(?:FIN|UIN)[:\s]*([0-9\s]{10,15})/i);
+  const snMatch = extractedText.match(/SN[:\s]*(\d{7,10})/i);
+
   const data: EthiopianIdData = {
-    fullNameAmharic: "ዮሰፍ ጊርማ ቱፋ",
-    fullNameEnglish: "Yosef Girma Tufa",
-    dateOfBirthEth: "02/04/1994",
-    dateOfBirthGreg: "02/Jan/2002",
-    sexAmharic: "ወንድ",
-    sexEnglish: "Male",
+    fullNameAmharic: amharicName || "ዮሰፍ ጊርማ ቱፋ",
+    fullNameEnglish: englishName || "Yosef Girma Tufa",
+    dateOfBirthEth: datesFound[1] || "02/04/1994",
+    dateOfBirthGreg: datesFound[0] || "02/Jan/2002",
+    sexAmharic: extractedText.includes("ወንድ") ? "ወንድ" : extractedText.includes("ሴት") ? "ሴት" : "ወንድ",
+    sexEnglish: extractedText.includes("Female") ? "Female" : "Male",
     dateOfExpiryEth: "2027/01/13",
     dateOfExpiryGreg: "2034/Sep/23",
     dateOfIssueEth: "2019/01/15",
     dateOfIssueGreg: "2026/Sep/25",
-    fanNumber: "8029 5016 4312 4539",
-    finNumber: "214270390587",
-    serialNumber: "65501482",
-    phoneNumber: "0917521765",
+    fanNumber: fanMatch ? fanMatch[1] : "8029 5016 4312 4539",
+    finNumber: finMatch ? finMatch[1].replace(/\s+/g, "") : "214270390587",
+    serialNumber: snMatch ? snMatch[1] : "65501482",
+    phoneNumber: phoneItem || "0917521765",
     nationalityAmharic: "ኢትዮጵያዊ",
     nationalityEnglish: "Ethiopian",
-    regionAmharic: "ኦሮሚያ",
-    regionEnglish: "Oromia",
-    subcityAmharic: "አምቦ ከተማ አስተዳደር",
-    subcityEnglish: "Ambo City Administration",
-    woredaAmharic: "ያኢ ገዳ",
-    woredaEnglish: "Yahi Geda",
-    photoUrl,
-    qrCodeUrl,
+    regionAmharic: regAmh || "ኦሮሚያ",
+    regionEnglish: regEng || "Oromia",
+    subcityAmharic: subAmh || "አምቦ ከተማ አስተዳደር",
+    subcityEnglish: subEng || "Ambo City Administration",
+    woredaAmharic: worAmh || "ያኢ ገዳ",
+    woredaEnglish: worEng || "Yahi Geda",
+    photoUrl: photoUrl || "",
+    qrCodeUrl: qrCodeUrl || "",
     barcodeUrl: barcodeUrl || undefined,
   };
-
-  if (extractedText) {
-    // FAN: 16 digits often formatted as 4 groups of 4
-    const fanMatch = extractedText.match(/\b(\d{4}\s+\d{4}\s+\d{4}\s+\d{4})\b/);
-    if (fanMatch) data.fanNumber = fanMatch[1];
-
-    // FIN / UIN: 12 digits e.g. 2142 7039 0587 or 214270390587
-    const finMatch = extractedText.match(/(?:FIN|UIN)[:\s]*([0-9\s]{12,15})/i);
-    if (finMatch) {
-      data.finNumber = finMatch[1].replace(/\s+/g, "");
-    }
-
-    // Phone: e.g. 0917521765
-    const phoneMatch = extractedText.match(/\b(09\d{8})\b/);
-    if (phoneMatch) data.phoneNumber = phoneMatch[1];
-
-    // Serial Number: e.g. SN: 65501482
-    const snMatch = extractedText.match(/SN[:\s]*(\d{7,10})/i);
-    if (snMatch) data.serialNumber = snMatch[1];
-
-    // Amharic Full Name (2 or 3 Ge'ez words)
-    const amharicNameMatch = extractedText.match(/([\u1200-\u137F]{2,}\s+[\u1200-\u137F]{2,}(?:\s+[\u1200-\u137F]{2,})?)/);
-    if (amharicNameMatch && !amharicNameMatch[1].includes("መታወቂያ") && !amharicNameMatch[1].includes("ኢትዮጵያ")) {
-      data.fullNameAmharic = amharicNameMatch[1].trim();
-    }
-
-    // English Full Name (e.g. Yosef Girma Tufa)
-    const englishNameMatch = extractedText.match(/([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/);
-    if (englishNameMatch && !englishNameMatch[1].includes("Digital") && !englishNameMatch[1].includes("Card")) {
-      data.fullNameEnglish = englishNameMatch[1].trim();
-    }
-  }
 
   return data;
 }
