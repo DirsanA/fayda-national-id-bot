@@ -304,15 +304,15 @@ export async function renderFrontCardToCanvas(data: EthiopianIdData): Promise<HT
 
   drawCode128Barcode(ctx, data.fanNumber, barcodeBoxX + 10, barcodeBoxY + 34, barcodeBoxW - 20, 52);
 
-  // 5. Ghost Photo on bottom right
+  // 5. Ghost Photo on bottom right (fits ghost slot below Fayda watermark: x: 830, y: 460, w: 113, h: 134)
   if (data.photoUrl) {
     try {
       const ghostImg = await loadImage(data.photoUrl);
       ctx.save();
       ctx.globalAlpha = 0.75;
-      drawRoundedRect(ctx, 810, 450, 145, 155, 8);
+      drawRoundedRect(ctx, 830, 460, 113, 134, 8);
       ctx.clip();
-      ctx.drawImage(ghostImg, 810, 450, 145, 155);
+      ctx.drawImage(ghostImg, 830, 460, 113, 134);
       ctx.restore();
     } catch {
       // Ghost fallback

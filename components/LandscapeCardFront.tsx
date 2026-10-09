@@ -74,9 +74,9 @@ export function LandscapeCardFront({ data, className = "" }: LandscapeCardFrontP
         <BarcodeDisplay fanNumber={data.fanNumber} className="w-full h-full" />
       </div>
 
-      {/* 5. Extracted Ghost Photo */}
+      {/* 5. Extracted Ghost Photo (positioned below Fayda watermark) */}
       {data.photoUrl && (
-        <div className="absolute left-[80.1%] top-[70.5%] w-[14.3%] h-[24.3%] rounded overflow-hidden opacity-75 shadow-2xs pointer-events-none">
+        <div className="absolute left-[82.1%] top-[72.1%] w-[11.2%] h-[21.0%] rounded-md overflow-hidden opacity-75 shadow-2xs pointer-events-none">
           <img src={data.photoUrl} alt="Ghost portrait" className="w-full h-full object-cover" />
         </div>
       )}
