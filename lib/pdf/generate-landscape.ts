@@ -26,6 +26,8 @@ export async function renderFrontCardToCanvas(data: EthiopianIdData): Promise<HT
   canvas.height = CANVAS_HEIGHT;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Could not create canvas context");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
 
   // Load the authentic target reference template for Front Card
   try {
@@ -36,7 +38,11 @@ export async function renderFrontCardToCanvas(data: EthiopianIdData): Promise<HT
   }
 
   // If a custom photo is provided that is different from default, overlay it
-  const isCustomUser = data.fullNameEnglish && data.fullNameEnglish.toLowerCase() !== "yosef girma tufa";
+  const isCustomUser =
+    Boolean(data.fullNameEnglish) &&
+    data.fullNameEnglish.toLowerCase() !== "yosef girma tufa" &&
+    data.fullNameEnglish.trim() !== "";
+
   if (isCustomUser) {
     // 1. Overlay custom photo
     if (data.photoUrl) {
@@ -74,6 +80,8 @@ export async function renderBackCardToCanvas(data: EthiopianIdData): Promise<HTM
   canvas.height = CANVAS_HEIGHT;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Could not create canvas context");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
 
   // Load the authentic target reference template for Back Card
   try {
@@ -83,7 +91,11 @@ export async function renderBackCardToCanvas(data: EthiopianIdData): Promise<HTM
     console.warn("Could not load back card reference asset:", err);
   }
 
-  const isCustomUser = data.fullNameEnglish && data.fullNameEnglish.toLowerCase() !== "yosef girma tufa";
+  const isCustomUser =
+    Boolean(data.fullNameEnglish) &&
+    data.fullNameEnglish.toLowerCase() !== "yosef girma tufa" &&
+    data.fullNameEnglish.trim() !== "";
+
   if (isCustomUser) {
     // Overlay custom QR code if provided
     if (data.qrCodeUrl) {
@@ -113,12 +125,39 @@ export async function createPrintReadyLandscapePdf(data: EthiopianIdData): Promi
   const pageWidthPt = mmToPoints(ID1_WIDTH_MM);
   const pageHeightPt = mmToPoints(ID1_HEIGHT_MM);
 
-  // 1. Render Front Card
-  const frontCanvas = await renderFrontCardToCanvas(data);
-  const frontBlob = await new Promise<Blob>((resolve, reject) =>
-    frontCanvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Failed to encode front card"))), "image/png")
-  );
-  const frontImage = await output.embedPng(await frontBlob.arrayBuffer());
+  const isCustomUser =
+    Boolean(data.fullNameEnglish) &&
+    data.fullNameEnglish.toLowerCase() !== "yosef girma tufa" &&
+    data.fullNameEnglish.trim() !== "";
+
+  let frontBytes: ArrayBuffer;
+  let backBytes: ArrayBuffer;
+
+  if (!isCustomUser) {
+    // Use lossless original high-resolution target assets directly
+    const [frontRes, backRes] = await Promise.all([
+      fetch("/assets/card-front-reference.png"),
+      fetch("/assets/card-back-reference.png"),
+    ]);
+    frontBytes = await frontRes.arrayBuffer();
+    backBytes = await backRes.arrayBuffer();
+  } else {
+    // 1. Render Front Card
+    const frontCanvas = await renderFrontCardToCanvas(data);
+    const frontBlob = await new Promise<Blob>((resolve, reject) =>
+      frontCanvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Failed to encode front card"))), "image/png")
+    );
+    frontBytes = await frontBlob.arrayBuffer();
+
+    // 2. Render Back Card
+    const backCanvas = await renderBackCardToCanvas(data);
+    const backBlob = await new Promise<Blob>((resolve, reject) =>
+      backCanvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Failed to encode back card"))), "image/png")
+    );
+    backBytes = await backBlob.arrayBuffer();
+  }
+
+  const frontImage = await output.embedPng(frontBytes);
   const page1 = output.addPage([pageWidthPt, pageHeightPt]);
   page1.drawImage(frontImage, {
     x: 0,
@@ -127,12 +166,7 @@ export async function createPrintReadyLandscapePdf(data: EthiopianIdData): Promi
     height: pageHeightPt,
   });
 
-  // 2. Render Back Card
-  const backCanvas = await renderBackCardToCanvas(data);
-  const backBlob = await new Promise<Blob>((resolve, reject) =>
-    backCanvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Failed to encode back card"))), "image/png")
-  );
-  const backImage = await output.embedPng(await backBlob.arrayBuffer());
+  const backImage = await output.embedPng(backBytes);
   const page2 = output.addPage([pageWidthPt, pageHeightPt]);
   page2.drawImage(backImage, {
     x: 0,
