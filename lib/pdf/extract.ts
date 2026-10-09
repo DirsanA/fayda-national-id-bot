@@ -469,17 +469,45 @@ export async function extractIdDataFromPdf(
     try {
       // Precise crop coordinates for front card components:
       // Front card: x=395, y=88, w=160, h=245 pt
-      // 1. Barcode & FAN box (bottom-left/center container with "ካርድ ቁጥር FAN" and 16 digits)
-      const fanBoxUrl = cropCanvasSubArea(source.canvas, 411, 286, 104, 37);
-      // 2. Expiry date container directly above the barcode box
-      const expBoxUrl = cropCanvasSubArea(source.canvas, 411, 266, 104, 25);
-      // 3. Issue date running vertically along right margin, rotated 90° clockwise to horizontal
-      const issueMarginUrl = cropAndRotateCanvasSubArea(source.canvas, 534, 127, 13, 145, 90);
+      // 1. Barcode & FAN box (bottom container with "ካርድ ቁጥር FAN" and 16 digits)
+      const fanBoxUrl = cropCanvasSubArea(source.canvas, 407, 286, 122, 40);
+      // 2. Expiry date container directly above the barcode box ("የሚያበቃበት ቀን | Date of Expiry")
+      const expBoxUrl = cropCanvasSubArea(source.canvas, 405, 263, 128, 32);
+      // 3. Issue date running vertically along right margin ("የተሰጠበት ቀን | Date of Issue"), rotated 90° clockwise
+      const issueMarginUrl = cropAndRotateCanvasSubArea(source.canvas, 532, 115, 22, 185, 90);
       // 4. Back card for FIN and serial number
       const backCardUrl = cropCanvasSubArea(source.canvas, 395, 335, 160, 245);
 
       const { createWorker } = await import("tesseract.js");
       const worker = await createWorker("eng");
+
+      const parseEthDate = (text: string): string | null => {
+        const m = text.match(/(\d{4})[\/\-](\d{2})[\/\-](\d{2})/);
+        return m ? `${m[1]}/${m[2]}/${m[3]}` : null;
+      };
+
+      const parseGregDate = (text: string): string | null => {
+        const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const m = text.match(/(\d{4})\s*[\/\-]\s*([A-Za-z]{3,4})\s*[\/\-]?\s*(\d{1,2})/);
+        if (!m) return null;
+        const year = m[1];
+        let mon = m[2].slice(0, 3);
+        const day = m[3].padStart(2, "0");
+        const exact = MONTHS.find((M) => M.toLowerCase() === mon.toLowerCase());
+        if (exact) {
+          mon = exact;
+        } else {
+          const fuzzy = MONTHS.find((M) => {
+            let diff = 0;
+            for (let i = 0; i < 3; i++) {
+              if (M[i].toLowerCase() !== mon[i].toLowerCase()) diff++;
+            }
+            return diff <= 1;
+          });
+          if (fuzzy) mon = fuzzy;
+        }
+        return `${year}/${mon}/${day}`;
+      };
 
       // A. Extract & Cross-Check FAN from front card barcode container
       if (fanBoxUrl) {
@@ -494,49 +522,51 @@ export async function extractIdDataFromPdf(
         }
       }
 
-      // B. Extract Expiry Date from front card box
+      // B. Extract Expiry Date directly from front card expiry box ("የሚያበቃበት ቀን | Date of Expiry")
       let cardExpEth: string | null = null;
       let cardExpGreg: string | null = null;
       if (expBoxUrl) {
         const { data: { text: expText } } = await worker.recognize(expBoxUrl);
-        const expEthMatch = expText.match(/(\d{4}\/\d{2}\/\d{2})/);
-        const expGregMatch = expText.match(/(\d{4}\s*[\/\-]\s*[A-Za-z]{3}\s*[\/\-]?\s*\d{1,2})/i);
-        if (expEthMatch) cardExpEth = expEthMatch[1];
-        if (expGregMatch) cardExpGreg = expGregMatch[1].replace(/\s+/g, "").replace(/([A-Za-z]{3})(\d)/, "$1/$2");
+        cardExpEth = parseEthDate(expText);
+        cardExpGreg = parseGregDate(expText);
       }
 
-      // C. Extract Issue Date from rotated right margin
+      // C. Extract Issue Date directly from rotated right margin ("የተሰጠበት ቀን | Date of Issue")
       let cardIssEth: string | null = null;
       let cardIssGreg: string | null = null;
       if (issueMarginUrl) {
         const { data: { text: issText } } = await worker.recognize(issueMarginUrl);
-        const issEthMatch = issText.match(/(\d{4}\/\d{2}\/\d{2})/);
-        const issGregMatch = issText.match(/(\d{4}\s*[\/\-]\s*[A-Za-z]{3}\s*[\/\-]?\s*\d{1,2})/i);
-        if (issEthMatch) cardIssEth = issEthMatch[1];
-        if (issGregMatch) cardIssGreg = issGregMatch[1].replace(/\s+/g, "").replace(/([A-Za-z]{3})(\d)/, "$1/$2");
+        cardIssEth = parseEthDate(issText);
+        cardIssGreg = parseGregDate(issText);
       }
 
-      // D. Cross-check and reconcile Issue Date & Expiry Date (Fayda 8-year validity rule)
+      // D. Cross-check and reconcile Issue Date & Expiry Date
+      const yearDiff = (cardExpGreg && cardIssGreg)
+        ? Math.abs(parseInt(cardExpGreg.slice(0, 4), 10) - parseInt(cardIssGreg.slice(0, 4), 10))
+        : (cardExpEth && cardIssEth)
+        ? Math.abs(parseInt(cardExpEth.slice(0, 4), 10) - parseInt(cardIssEth.slice(0, 4), 10))
+        : 8;
+
       if (cardExpEth && !cardIssEth) {
         const [y, m, d] = cardExpEth.split("/").map(Number);
-        cardIssEth = `${y - 8}/${String(m).padStart(2, "0")}/${String(Math.min(30, d + 2)).padStart(2, "0")}`;
+        cardIssEth = `${y - yearDiff}/${String(m).padStart(2, "0")}/${String(d).padStart(2, "0")}`;
       } else if (cardIssEth && !cardExpEth) {
         const [y, m, d] = cardIssEth.split("/").map(Number);
-        cardExpEth = `${y + 8}/${String(m).padStart(2, "0")}/${String(Math.max(1, d - 2)).padStart(2, "0")}`;
+        cardExpEth = `${y + yearDiff}/${String(m).padStart(2, "0")}/${String(d).padStart(2, "0")}`;
       }
 
       if (cardExpGreg && !cardIssGreg) {
         const parts = cardExpGreg.split("/");
         const y = parseInt(parts[0], 10);
         const m = parts[1];
-        const d = parseInt(parts[2], 10);
-        cardIssGreg = `${y - 8}/${m}/${String(Math.min(31, d + 2)).padStart(2, "0")}`;
+        const d = parts[2];
+        cardIssGreg = `${y - yearDiff}/${m}/${d}`;
       } else if (cardIssGreg && !cardExpGreg) {
         const parts = cardIssGreg.split("/");
         const y = parseInt(parts[0], 10);
         const m = parts[1];
-        const d = parseInt(parts[2], 10);
-        cardExpGreg = `${y + 8}/${m}/${String(Math.max(1, d - 2)).padStart(2, "0")}`;
+        const d = parts[2];
+        cardExpGreg = `${y + yearDiff}/${m}/${d}`;
       }
 
       if (cardExpEth) dateOfExpiryEth = cardExpEth;
