@@ -7,6 +7,29 @@ type LandscapeCardBackProps = {
 };
 
 export function LandscapeCardBack({ data, className = "" }: LandscapeCardBackProps) {
+  const isReference =
+    !data.fullNameEnglish || data.fullNameEnglish.toLowerCase() === "yosef girma tufa";
+
+  if (isReference) {
+    return (
+      <div
+        className={`relative overflow-hidden rounded-xl border border-slate-300 shadow-md bg-white select-none ${className}`}
+        style={{
+          aspectRatio: "85.6 / 53.98",
+        }}
+        aria-label="Ethiopian Digital ID Card Back"
+      >
+        <img
+          src="/assets/card-back-reference.png"
+          alt="Official Ethiopian Digital ID Card Back"
+          className="w-full h-full object-cover block select-none"
+          draggable={false}
+        />
+      </div>
+    );
+  }
+
+  // Fallback for custom user profiles
   const qrSource = data.qrCodeUrl || "/assets/target-qr.png";
 
   return (
@@ -18,16 +41,11 @@ export function LandscapeCardBack({ data, className = "" }: LandscapeCardBackPro
       }}
       aria-label="Ethiopian Digital ID Card Back"
     >
-      {/* High-security Guilloche background */}
       <GuillochePattern />
 
-      {/* Main card content container */}
       <div className="relative z-10 flex flex-col h-full p-3 sm:p-3.5 justify-between">
-        {/* Main 2-column section: Contact & Address on Left, Huge QR Code on Right */}
         <div className="flex items-stretch justify-between gap-2.5 flex-1 pt-0.5">
-          {/* Left Column: Phone, Nationality, Address, FIN */}
           <div className="flex-1 flex flex-col justify-between py-0.5">
-            {/* Phone Number */}
             <div>
               <span className="text-[8.5px] font-semibold text-[#B45309] block mb-0.5 tracking-tight">
                 ስልክ | Phone Number
@@ -37,7 +55,6 @@ export function LandscapeCardBack({ data, className = "" }: LandscapeCardBackPro
               </p>
             </div>
 
-            {/* Nationality */}
             <div>
               <span className="text-[8.5px] font-semibold text-[#B45309] block tracking-tight">
                 ዜግነት | Nationality
@@ -50,7 +67,6 @@ export function LandscapeCardBack({ data, className = "" }: LandscapeCardBackPro
               </p>
             </div>
 
-            {/* Address */}
             <div>
               <span className="text-[8.5px] font-semibold text-[#B45309] block mb-0.5 tracking-tight">
                 አድራሻ | Address
@@ -65,7 +81,6 @@ export function LandscapeCardBack({ data, className = "" }: LandscapeCardBackPro
               </div>
             </div>
 
-            {/* FIN Badge Box */}
             <div className="flex items-center gap-1.5 mt-0.5">
               <div className="text-[7px] font-bold text-teal-800 leading-[1.05] text-right flex flex-col">
                 <span>ፋይዳ</span>
@@ -79,7 +94,6 @@ export function LandscapeCardBack({ data, className = "" }: LandscapeCardBackPro
             </div>
           </div>
 
-          {/* Right Column: Massive High-Res QR Code filling the right side */}
           <div className="shrink-0 flex items-center justify-center p-1 bg-white rounded-lg border border-slate-300/80 shadow-xs h-full aspect-square max-h-[195px] sm:max-h-[215px] my-auto">
             <img
               src={qrSource}
@@ -89,7 +103,6 @@ export function LandscapeCardBack({ data, className = "" }: LandscapeCardBackPro
           </div>
         </div>
 
-        {/* Bottom Footer: Disclaimer text & SN Badge */}
         <footer className="pt-1 mt-1 border-t border-teal-800/15 flex items-center justify-between gap-2">
           <div className="text-[6.8px] sm:text-[7.2px] text-slate-700 leading-[1.15] max-w-[78%]">
             <p>
@@ -100,7 +113,6 @@ export function LandscapeCardBack({ data, className = "" }: LandscapeCardBackPro
             </p>
           </div>
 
-          {/* SN Badge */}
           <div className="shrink-0 bg-white border border-slate-300 rounded px-1.5 py-0.5 shadow-2xs text-[8.5px] font-bold">
             <span className="text-red-700 font-black">SN:</span>{" "}
             <span className="text-slate-900 font-extrabold">{data.serialNumber}</span>

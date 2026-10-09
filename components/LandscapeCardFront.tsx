@@ -10,6 +10,29 @@ type LandscapeCardFrontProps = {
 };
 
 export function LandscapeCardFront({ data, className = "" }: LandscapeCardFrontProps) {
+  const isReference =
+    !data.fullNameEnglish || data.fullNameEnglish.toLowerCase() === "yosef girma tufa";
+
+  if (isReference) {
+    return (
+      <div
+        className={`relative overflow-hidden rounded-xl border border-slate-300 shadow-md bg-white select-none ${className}`}
+        style={{
+          aspectRatio: "85.6 / 53.98",
+        }}
+        aria-label="Ethiopian Digital ID Card Front"
+      >
+        <img
+          src="/assets/card-front-reference.png"
+          alt="Official Ethiopian Digital ID Card Front"
+          className="w-full h-full object-cover block select-none"
+          draggable={false}
+        />
+      </div>
+    );
+  }
+
+  // Fallback for custom user profiles
   return (
     <div
       className={`relative overflow-hidden rounded-xl border border-slate-300 shadow-md bg-[#D7F5ED] select-none ${className}`}
@@ -19,12 +42,9 @@ export function LandscapeCardFront({ data, className = "" }: LandscapeCardFrontP
       }}
       aria-label="Ethiopian Digital ID Card Front"
     >
-      {/* High-security Guilloche background & watermarks */}
       <GuillochePattern />
 
-      {/* Main card content container */}
       <div className="relative z-10 flex flex-col h-full p-3 sm:p-3.5 justify-between">
-        {/* Top Header Bar */}
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <EthiopianFlag className="w-9.5 h-6 shrink-0 shadow-2xs" />
@@ -37,13 +57,10 @@ export function LandscapeCardFront({ data, className = "" }: LandscapeCardFrontP
               </p>
             </div>
           </div>
-          {/* Vector transparent National ID Logo */}
           <NationalIdLogo className="h-7.5 shrink-0" />
         </header>
 
-        {/* Middle Body: Left vertical date + Photo + Demographic fields */}
         <div className="flex items-center gap-2 my-auto pt-0.5">
-          {/* Vertical Date of Issue along left margin */}
           <div className="relative flex items-center justify-center w-3 shrink-0 h-28">
             <div
               className="absolute whitespace-nowrap text-[7px] font-bold text-teal-800 tracking-tight"
@@ -56,7 +73,6 @@ export function LandscapeCardFront({ data, className = "" }: LandscapeCardFrontP
             </div>
           </div>
 
-          {/* Portrait Photo */}
           <div className="shrink-0 w-24 sm:w-27 h-28 sm:h-32 rounded-lg overflow-hidden border border-teal-800/20 shadow-xs bg-slate-100 flex items-center justify-center">
             {data.photoUrl ? (
               <img
@@ -69,9 +85,7 @@ export function LandscapeCardFront({ data, className = "" }: LandscapeCardFrontP
             )}
           </div>
 
-          {/* Personal Demographic Text Details */}
           <div className="flex-1 flex flex-col justify-center space-y-1 pl-1 leading-none">
-            {/* Full Name */}
             <div>
               <span className="text-[8.5px] font-semibold text-[#B45309] block mb-0.5 tracking-tight">
                 ሙሉ ስም | Full Name
@@ -84,7 +98,6 @@ export function LandscapeCardFront({ data, className = "" }: LandscapeCardFrontP
               </p>
             </div>
 
-            {/* Date of Birth */}
             <div>
               <span className="text-[8.5px] font-semibold text-[#B45309] block mb-0.5 tracking-tight">
                 የትውልድ ቀን | Date of Birth
@@ -94,7 +107,6 @@ export function LandscapeCardFront({ data, className = "" }: LandscapeCardFrontP
               </p>
             </div>
 
-            {/* Sex */}
             <div>
               <span className="text-[8.5px] font-semibold text-[#B45309] block mb-0.5 tracking-tight">
                 ፆታ | Sex
@@ -104,7 +116,6 @@ export function LandscapeCardFront({ data, className = "" }: LandscapeCardFrontP
               </p>
             </div>
 
-            {/* Date of Expiry */}
             <div>
               <span className="text-[8.5px] font-semibold text-[#B45309] block mb-0.5 tracking-tight">
                 የሚያበቃበት ቀን | Date of Expiry
@@ -116,9 +127,7 @@ export function LandscapeCardFront({ data, className = "" }: LandscapeCardFrontP
           </div>
         </div>
 
-        {/* Bottom Bar: FAN Barcode + Transparent "ፋ ይ ዳ" Logomark + Ghost Photo */}
         <footer className="flex items-end justify-between pt-0.5 gap-2">
-          {/* FAN Barcode Section matching Image 3 */}
           <div className="flex items-center gap-1.5 ml-2.5">
             <div className="text-[7.5px] font-extrabold text-teal-700 leading-[1.05] text-right flex flex-col">
               <span>ካርድ</span>
@@ -128,7 +137,6 @@ export function LandscapeCardFront({ data, className = "" }: LandscapeCardFrontP
             <BarcodeDisplay fanNumber={data.fanNumber} className="w-44 sm:w-52" />
           </div>
 
-          {/* Authentic Transparent "ፋ ይ ዳ" Logomark */}
           <div className="shrink-0 flex items-end h-8 sm:h-9 bg-transparent">
             <img
               src="/assets/fayda-transparent.png"
@@ -137,7 +145,6 @@ export function LandscapeCardFront({ data, className = "" }: LandscapeCardFrontP
             />
           </div>
 
-          {/* Secondary / Ghost Photo */}
           <div className="shrink-0 w-8.5 h-11 rounded border border-teal-800/20 overflow-hidden bg-slate-100 opacity-75">
             {data.photoUrl ? (
               <img src={data.photoUrl} alt="Ghost identity portrait" className="w-full h-full object-cover" />
