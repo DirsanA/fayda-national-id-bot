@@ -412,14 +412,21 @@ export async function renderBackCardToCanvas(data: EthiopianIdData): Promise<HTM
 
 export async function createPrintReadyLandscapePdf(data: EthiopianIdData): Promise<Blob> {
   const output = await PDFDocument.create();
-  output.setTitle("Print-ready Ethiopian Digital ID Landscape Card");
+  output.setTitle("Print-ready Ethiopian Digital ID Landscape Cards");
   output.setCreator("Document Print Utility");
   output.setProducer("Document Print Utility");
 
-  const pageWidthPt = mmToPoints(ID1_WIDTH_MM);
-  const pageHeightPt = mmToPoints(ID1_HEIGHT_MM);
+  const cardWidthPt = mmToPoints(ID1_WIDTH_MM);
+  const cardHeightPt = mmToPoints(ID1_HEIGHT_MM);
 
-  // 1 & 2. Parallelize Front & Back card canvas rendering and background photo processing
+  // Single page horizontal layout holding both Front & Back side-by-side
+  // A4 Landscape is ~841.89 x 595.28 pt; custom card sheet:
+  const gapPt = mmToPoints(10); // 10mm gap between cards
+  const marginPt = mmToPoints(15); // 15mm page margin
+  const pageWidthPt = cardWidthPt * 2 + gapPt + marginPt * 2;
+  const pageHeightPt = cardHeightPt + marginPt * 2;
+
+  // 1 & 2. Parallelize Front & Back card canvas rendering
   const [frontCanvas, backCanvas] = await Promise.all([
     renderFrontCardToCanvas(data),
     renderBackCardToCanvas(data),
@@ -445,20 +452,22 @@ export async function createPrintReadyLandscapePdf(data: EthiopianIdData): Promi
     output.embedPng(backBytes),
   ]);
 
-  const page1 = output.addPage([pageWidthPt, pageHeightPt]);
-  page1.drawImage(frontImage, {
-    x: 0,
-    y: 0,
-    width: pageWidthPt,
-    height: pageHeightPt,
+  const page = output.addPage([pageWidthPt, pageHeightPt]);
+
+  // Draw Front Card on left
+  page.drawImage(frontImage, {
+    x: marginPt,
+    y: marginPt,
+    width: cardWidthPt,
+    height: cardHeightPt,
   });
 
-  const page2 = output.addPage([pageWidthPt, pageHeightPt]);
-  page2.drawImage(backImage, {
-    x: 0,
-    y: 0,
-    width: pageWidthPt,
-    height: pageHeightPt,
+  // Draw Back Card on right (horizontally aligned)
+  page.drawImage(backImage, {
+    x: marginPt + cardWidthPt + gapPt,
+    y: marginPt,
+    width: cardWidthPt,
+    height: cardHeightPt,
   });
 
   const bytes = await output.save();

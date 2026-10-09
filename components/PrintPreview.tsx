@@ -25,9 +25,9 @@ export function PrintPreview({ pdf }: PrintPreviewProps) {
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
             Print Ready
           </div>
-          <h3 className="mt-2 font-bold text-white text-base sm:text-xl">Print-Ready Landscape PDF (2 Pages)</h3>
+          <h3 className="mt-2 font-bold text-white text-base sm:text-xl">Print-Ready Landscape Sheet (Side-by-Side Cards)</h3>
           <p className="mt-1 text-xs sm:text-sm text-emerald-200/80 leading-relaxed">
-            Page 1: Front Card • Page 2: Back Card (ID-1 dimensions: 85.60 × 53.98 mm). Set printer scale to 100%.
+            Front Card (Left) &amp; Back Card (Right) aligned horizontally side-by-side on 1 print sheet (ID-1 dimensions: 85.60 × 53.98 mm each). Set printer scale to 100%.
           </p>
         </div>
       </div>
