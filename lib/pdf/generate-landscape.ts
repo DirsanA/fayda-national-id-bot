@@ -209,6 +209,37 @@ function drawCode128Barcode(
   });
 }
 
+export function formatGregorianDate(dateStr: string): string {
+  if (!dateStr) return "";
+  if (/[a-zA-Z]/.test(dateStr)) return dateStr;
+
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  // Pattern DD/MM/YYYY
+  const dmy = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (dmy) {
+    const day = dmy[1].padStart(2, "0");
+    const monthIdx = parseInt(dmy[2], 10) - 1;
+    const year = dmy[3];
+    if (monthIdx >= 0 && monthIdx < 12) {
+      return `${day}/${MONTHS[monthIdx]}/${year}`;
+    }
+  }
+
+  // Pattern YYYY/MM/DD
+  const ymd = dateStr.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+  if (ymd) {
+    const year = ymd[1];
+    const monthIdx = parseInt(ymd[2], 10) - 1;
+    const day = ymd[3].padStart(2, "0");
+    if (monthIdx >= 0 && monthIdx < 12) {
+      return `${year}/${MONTHS[monthIdx]}/${day}`;
+    }
+  }
+
+  return dateStr;
+}
+
 export async function renderFrontCardToCanvas(data: EthiopianIdData): Promise<HTMLCanvasElement> {
   const canvas = document.createElement("canvas");
   canvas.width = CANVAS_WIDTH;
@@ -218,112 +249,67 @@ export async function renderFrontCardToCanvas(data: EthiopianIdData): Promise<HT
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
 
-  // 1. Draw Guilloche Security Background
-  drawGuillocheBackground(ctx, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-  // 2. Draw Ethiopian Flag on top-left
-  drawEthiopianFlag(ctx, 42, 38, 88, 56);
-
-  // 3. Header text
-  ctx.fillStyle = "#020617";
-  ctx.font = "bold 24px 'Noto Sans Ethiopic', sans-serif";
-  ctx.fillText("የኢትዮጵያ ዲጂታል መታወቂያ ካርድ", 145, 62);
-  ctx.fillStyle = "#082f49";
-  ctx.font = "900 22px 'Inter', sans-serif";
-  ctx.fillText("Ethiopian Digital ID Card", 145, 88);
-
-  // 4. National ID Emblem on top-right
+  // 1. Draw authentic high-resolution template background
   try {
-    const emblem = await loadImage("/assets/national-id-emblem.png");
-    ctx.drawImage(emblem, 770, 36, 195, 60);
-  } catch {
-    // Emblem fallback
+    const templateImg = await loadImage("/assets/card-front-template.png");
+    ctx.drawImage(templateImg, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  } catch (err) {
+    console.warn("Could not load front template:", err);
   }
 
-  // 5. Left Vertical Issue Date
-  ctx.save();
-  ctx.translate(32, 420);
-  ctx.rotate(-Math.PI / 2);
-  ctx.fillStyle = "#0f766e";
-  ctx.font = "bold 13px 'Noto Sans Ethiopic', 'Inter', sans-serif";
-  ctx.fillText(
-    `የተሰጠበት ቀን : ${data.dateOfIssueEth || "2019/01/15"}     Date of Issue : ${data.dateOfIssueGreg || "2026/Sep/25"}`,
-    0,
-    0
-  );
-  ctx.restore();
+  // 2. Clear previous text values strip with authentic gradient patch
+  const textGrad = ctx.createLinearGradient(345, 0, 740, 0);
+  textGrad.addColorStop(0, "rgba(215, 245, 237, 0.98)");
+  textGrad.addColorStop(0.5, "rgba(240, 249, 236, 0.98)");
+  textGrad.addColorStop(1, "rgba(248, 245, 218, 0.98)");
 
-  // 6. Primary Portrait Photo
-  const photoX = 52;
-  const photoY = 142;
-  const photoW = 250;
-  const photoH = 325;
+  ctx.fillStyle = textGrad;
+  // Clear Name strip
+  drawRoundedRect(ctx, 345, 172, 395, 68, 4);
+  ctx.fill();
+  // Clear DOB strip
+  drawRoundedRect(ctx, 345, 286, 395, 34, 4);
+  ctx.fill();
+  // Clear Sex strip
+  drawRoundedRect(ctx, 345, 366, 395, 34, 4);
+  ctx.fill();
+  // Clear Expiry strip
+  drawRoundedRect(ctx, 345, 446, 395, 34, 4);
+  ctx.fill();
+
+  // 3. Draw extracted demographic text
+  ctx.fillStyle = "#020617";
+  ctx.font = "bold 26px 'Noto Sans Ethiopic', sans-serif";
+  ctx.fillText(data.fullNameAmharic, 350, 194);
+  ctx.font = "bold 24px 'Inter', sans-serif";
+  ctx.fillText(data.fullNameEnglish, 350, 224);
+
+  const dobGregFormatted = formatGregorianDate(data.dateOfBirthGreg);
+  ctx.font = "bold 23px 'Inter', sans-serif";
+  ctx.fillText(`${data.dateOfBirthEth} | ${dobGregFormatted}`, 350, 308);
+
+  ctx.font = "bold 23px 'Noto Sans Ethiopic', 'Inter', sans-serif";
+  ctx.fillText(`${data.sexAmharic} | ${data.sexEnglish}`, 350, 388);
+
+  const expiryGregFormatted = formatGregorianDate(data.dateOfExpiryGreg);
+  ctx.font = "bold 23px 'Inter', sans-serif";
+  ctx.fillText(`${data.dateOfExpiryEth} | ${expiryGregFormatted}`, 350, 468);
+
+  // 4. Primary Portrait Photo
   if (data.photoUrl) {
     try {
       const photoImg = await loadImage(data.photoUrl);
       ctx.save();
-      drawRoundedRect(ctx, photoX, photoY, photoW, photoH, 12);
+      drawRoundedRect(ctx, 52, 142, 250, 325, 8);
       ctx.clip();
-      ctx.drawImage(photoImg, photoX, photoY, photoW, photoH);
+      ctx.drawImage(photoImg, 52, 142, 250, 325);
       ctx.restore();
-      // Subtle border
-      ctx.strokeStyle = "rgba(13, 148, 136, 0.3)";
-      ctx.lineWidth = 1.5;
-      drawRoundedRect(ctx, photoX, photoY, photoW, photoH, 12);
-      ctx.stroke();
     } catch {
       // Photo error fallback
     }
   }
 
-  // 7. Demographic Fields (Labels + Values)
-  const textX = 350;
-
-  // Full Name
-  ctx.fillStyle = "#B45309";
-  ctx.font = "bold 16px 'Noto Sans Ethiopic', sans-serif";
-  ctx.fillText("ሙሉ ስም | Full Name", textX, 160);
-
-  ctx.fillStyle = "#020617";
-  ctx.font = "bold 26px 'Noto Sans Ethiopic', sans-serif";
-  ctx.fillText(data.fullNameAmharic, textX, 192);
-  ctx.font = "bold 24px 'Inter', sans-serif";
-  ctx.fillText(data.fullNameEnglish, textX, 222);
-
-  // Date of Birth
-  ctx.fillStyle = "#B45309";
-  ctx.font = "bold 16px 'Noto Sans Ethiopic', sans-serif";
-  ctx.fillText("የትውልድ ቀን | Date of Birth", textX, 275);
-
-  ctx.fillStyle = "#020617";
-  ctx.font = "bold 23px 'Inter', sans-serif";
-  ctx.fillText(`${data.dateOfBirthEth} | ${data.dateOfBirthGreg}`, textX, 305);
-
-  // Sex
-  ctx.fillStyle = "#B45309";
-  ctx.font = "bold 16px 'Noto Sans Ethiopic', sans-serif";
-  ctx.fillText("ፆታ | Sex", textX, 355);
-
-  ctx.fillStyle = "#020617";
-  ctx.font = "bold 23px 'Noto Sans Ethiopic', 'Inter', sans-serif";
-  ctx.fillText(`${data.sexAmharic} | ${data.sexEnglish}`, textX, 385);
-
-  // Date of Expiry
-  ctx.fillStyle = "#B45309";
-  ctx.font = "bold 16px 'Noto Sans Ethiopic', sans-serif";
-  ctx.fillText("የሚያበቃበት ቀን | Date of Expiry", textX, 435);
-
-  ctx.fillStyle = "#020617";
-  ctx.font = "bold 23px 'Inter', sans-serif";
-  ctx.fillText(`${data.dateOfExpiryEth} | ${data.dateOfExpiryGreg}`, textX, 465);
-
-  // 8. FAN label & Barcode container
-  ctx.fillStyle = "#0f766e";
-  ctx.font = "900 13px 'Noto Sans Ethiopic', sans-serif";
-  ctx.fillText("ካርድ", 360, 525);
-  ctx.fillText("ቁጥር", 360, 545);
-  ctx.fillText("FAN", 360, 565);
-
+  // 5. White Barcode Container with extracted FAN and Code128 bars
   const barcodeBoxX = 410;
   const barcodeBoxY = 502;
   const barcodeBoxW = 320;
@@ -336,42 +322,24 @@ export async function renderFrontCardToCanvas(data: EthiopianIdData): Promise<HT
   ctx.lineWidth = 1;
   ctx.stroke();
 
-  // Formatted FAN digits
   ctx.fillStyle = "#020617";
   ctx.font = "900 21px monospace";
   ctx.textAlign = "center";
   ctx.fillText(data.fanNumber, barcodeBoxX + barcodeBoxW / 2, barcodeBoxY + 24);
   ctx.textAlign = "left";
 
-  // Code128 barcode bars
   drawCode128Barcode(ctx, data.fanNumber, barcodeBoxX + 10, barcodeBoxY + 34, barcodeBoxW - 20, 48);
 
-  // 9. Fayda watermark
-  try {
-    const fayda = await loadImage("/assets/fayda-transparent.png");
-    ctx.drawImage(fayda, 750, 510, 80, 75);
-  } catch {
-    // Fayda fallback
-  }
-
-  // 10. Ghost Photo on bottom right
+  // 6. Ghost Photo on bottom right
   if (data.photoUrl) {
     try {
       const ghostImg = await loadImage(data.photoUrl);
       ctx.save();
       ctx.globalAlpha = 0.75;
-      const ghostX = 845;
-      const ghostY = 495;
-      const ghostW = 82;
-      const ghostH = 105;
-      drawRoundedRect(ctx, ghostX, ghostY, ghostW, ghostH, 6);
+      drawRoundedRect(ctx, 845, 495, 82, 105, 4);
       ctx.clip();
-      ctx.drawImage(ghostImg, ghostX, ghostY, ghostW, ghostH);
+      ctx.drawImage(ghostImg, 845, 495, 82, 105);
       ctx.restore();
-      ctx.strokeStyle = "rgba(13, 148, 136, 0.3)";
-      ctx.lineWidth = 1;
-      drawRoundedRect(ctx, 845, 495, 82, 105, 6);
-      ctx.stroke();
     } catch {
       // Ghost fallback
     }
@@ -389,124 +357,75 @@ export async function renderBackCardToCanvas(data: EthiopianIdData): Promise<HTM
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
 
-  // 1. Draw Guilloche Security Background
-  drawGuillocheBackground(ctx, CANVAS_WIDTH, CANVAS_HEIGHT);
+  // 1. Draw authentic high-resolution template background
+  try {
+    const templateImg = await loadImage("/assets/card-back-template.png");
+    ctx.drawImage(templateImg, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  } catch (err) {
+    console.warn("Could not load back template:", err);
+  }
 
-  const leftX = 45;
+  // 2. Clear dynamic text strips with authentic gradient patch
+  const backGrad = ctx.createLinearGradient(40, 0, 430, 0);
+  backGrad.addColorStop(0, "rgba(215, 245, 237, 0.98)");
+  backGrad.addColorStop(1, "rgba(230, 250, 240, 0.98)");
 
-  // 2. Phone Number
-  ctx.fillStyle = "#B45309";
-  ctx.font = "bold 16px 'Noto Sans Ethiopic', sans-serif";
-  ctx.fillText("ስልክ | Phone Number", leftX, 55);
+  ctx.fillStyle = backGrad;
+  // Clear Phone strip
+  drawRoundedRect(ctx, 40, 70, 390, 34, 4);
+  ctx.fill();
+  // Clear Nationality strip
+  drawRoundedRect(ctx, 40, 164, 390, 34, 4);
+  ctx.fill();
+  // Clear Address strip
+  drawRoundedRect(ctx, 40, 242, 390, 180, 4);
+  ctx.fill();
 
+  // 3. Draw extracted text
   ctx.fillStyle = "#020617";
   ctx.font = "bold 25px 'Inter', sans-serif";
-  ctx.fillText(data.phoneNumber, leftX, 90);
+  ctx.fillText(data.phoneNumber, 45, 92);
 
-  // 3. Nationality
-  ctx.fillStyle = "#B45309";
-  ctx.font = "bold 16px 'Noto Sans Ethiopic', sans-serif";
-  ctx.fillText("ዜግነት | Nationality", leftX, 132);
-  ctx.font = "14px 'Noto Sans Ethiopic', sans-serif";
-  ctx.fillText("(በተጠቃሚው መልስ | Self Declared)", leftX, 152);
-
-  ctx.fillStyle = "#020617";
   ctx.font = "bold 23px 'Noto Sans Ethiopic', 'Inter', sans-serif";
-  ctx.fillText(`${data.nationalityAmharic} | ${data.nationalityEnglish}`, leftX, 185);
-
-  // 4. Address
-  ctx.fillStyle = "#B45309";
-  ctx.font = "bold 16px 'Noto Sans Ethiopic', sans-serif";
-  ctx.fillText("አድራሻ | Address", leftX, 230);
-
-  ctx.fillStyle = "#020617";
-  ctx.font = "bold 21px 'Noto Sans Ethiopic', sans-serif";
-  ctx.fillText(data.regionAmharic, leftX, 262);
-  ctx.font = "bold 21px 'Inter', sans-serif";
-  ctx.fillText(data.regionEnglish, leftX, 290);
+  ctx.fillText(`${data.nationalityAmharic} | ${data.nationalityEnglish}`, 45, 186);
 
   ctx.font = "bold 21px 'Noto Sans Ethiopic', sans-serif";
-  ctx.fillText(data.subcityAmharic, leftX, 322);
+  ctx.fillText(data.regionAmharic, 45, 264);
   ctx.font = "bold 21px 'Inter', sans-serif";
-  ctx.fillText(data.subcityEnglish, leftX, 350);
+  ctx.fillText(data.regionEnglish, 45, 292);
 
   ctx.font = "bold 21px 'Noto Sans Ethiopic', sans-serif";
-  ctx.fillText(data.woredaAmharic, leftX, 382);
+  ctx.fillText(data.subcityAmharic, 45, 324);
   ctx.font = "bold 21px 'Inter', sans-serif";
-  ctx.fillText(data.woredaEnglish, leftX, 410);
+  ctx.fillText(data.subcityEnglish, 45, 352);
 
-  // 5. FIN Badge
-  ctx.fillStyle = "#0f766e";
-  ctx.font = "bold 13px 'Noto Sans Ethiopic', sans-serif";
-  ctx.fillText("ፋይዳ", leftX, 468);
-  ctx.fillText("ልዩ ቁጥር", leftX, 488);
+  ctx.font = "bold 21px 'Noto Sans Ethiopic', sans-serif";
+  ctx.fillText(data.woredaAmharic, 45, 384);
+  ctx.font = "bold 21px 'Inter', sans-serif";
+  ctx.fillText(data.woredaEnglish, 45, 412);
 
-  const finBoxX = leftX + 65;
-  const finBoxY = 458;
-  const finBoxW = 290;
-  const finBoxH = 42;
+  // 4. Clear & Draw FIN digits inside the FIN box
   ctx.fillStyle = "#ffffff";
-  drawRoundedRect(ctx, finBoxX, finBoxY, finBoxW, finBoxH, 6);
-  ctx.fill();
-  ctx.strokeStyle = "#cbd5e1";
-  ctx.stroke();
-
+  ctx.fillRect(115, 460, 210, 36);
   ctx.fillStyle = "#020617";
   ctx.font = "900 22px 'Inter', monospace";
-  ctx.fillText(`FIN  ${data.finNumber}`, finBoxX + 16, finBoxY + 28);
+  ctx.fillText(`FIN  ${data.finNumber}`, 120, 486);
 
-  // 6. QR Code Container on the right
-  const qrBoxX = 445;
-  const qrBoxY = 32;
-  const qrBoxSize = 515;
-
+  // 5. Clear & Draw SN inside the SN box
   ctx.fillStyle = "#ffffff";
-  drawRoundedRect(ctx, qrBoxX, qrBoxY, qrBoxSize, qrBoxSize, 12);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(203, 213, 225, 0.8)";
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
+  ctx.fillRect(815, 574, 150, 32);
+  ctx.fillStyle = "#020617";
+  ctx.font = "900 18px 'Inter', monospace";
+  ctx.fillText(data.serialNumber || "65501482", 820, 596);
 
+  // 6. Draw QR code cleanly inside the white QR container
   const qrSource = data.qrCodeUrl || "/assets/target-qr.png";
   try {
     const qrImg = await loadImage(qrSource);
-    ctx.drawImage(qrImg, qrBoxX + 10, qrBoxY + 10, qrBoxSize - 20, qrBoxSize - 20);
+    ctx.drawImage(qrImg, 450, 32, 510, 500);
   } catch {
     // QR fallback
   }
-
-  // 7. Footer: Disclaimer Text & SN Badge
-  const footerY = 582;
-  ctx.fillStyle = "#334155";
-  ctx.font = "bold 13px 'Noto Sans Ethiopic', sans-serif";
-  ctx.fillText(
-    "ይህ መታወቂያ የጠፋ ካገኙ በቅርብዎ ያለ ፖሊስ ጣቢያ ወይም ለተቋሙ ያስረክቡ። ለተጨማሪ መረጃ 9779 ላይ ይደውሉ ወይም id.et/cardprint ይጎብኙ።",
-    leftX,
-    footerY
-  );
-  ctx.font = "12px 'Inter', sans-serif";
-  ctx.fillText(
-    "If lost and found, please return to nearby police station or to the institution. Call 9779 or visit id.et/cardprint for more.",
-    leftX,
-    footerY + 20
-  );
-
-  // SN Badge
-  const snBoxX = 765;
-  const snBoxY = 570;
-  const snBoxW = 205;
-  const snBoxH = 40;
-  ctx.fillStyle = "#ffffff";
-  drawRoundedRect(ctx, snBoxX, snBoxY, snBoxW, snBoxH, 6);
-  ctx.fill();
-  ctx.strokeStyle = "#cbd5e1";
-  ctx.stroke();
-
-  ctx.font = "900 18px 'Inter', monospace";
-  ctx.fillStyle = "#b91c1c";
-  ctx.fillText("SN:", snBoxX + 14, snBoxY + 26);
-  ctx.fillStyle = "#020617";
-  ctx.fillText(data.serialNumber || "65501482", snBoxX + 54, snBoxY + 26);
 
   return canvas;
 }

@@ -1,5 +1,4 @@
 import type { EthiopianIdData } from "@/types/id-card";
-import { GuillochePattern } from "./GuillochePattern";
 
 type LandscapeCardBackProps = {
   data: EthiopianIdData;
@@ -18,83 +17,65 @@ export function LandscapeCardBack({ data, className = "" }: LandscapeCardBackPro
       }}
       aria-label="Ethiopian Digital ID Card Back"
     >
-      <GuillochePattern />
+      {/* 1. Authentic Template Background with fine guilloche, uncut disclaimer & labels */}
+      <img
+        src="/assets/card-back-template.png"
+        alt="Ethiopian Digital ID Back Template"
+        className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none"
+        draggable={false}
+      />
 
-      <div className="relative z-10 flex flex-col h-full p-3 sm:p-3.5 justify-between">
-        <div className="flex items-stretch justify-between gap-2.5 flex-1 pt-0.5">
-          <div className="flex-1 flex flex-col justify-between py-0.5">
-            <div>
-              <span className="text-[8.5px] font-semibold text-[#B45309] block mb-0.5 tracking-tight">
-                ስልክ | Phone Number
-              </span>
-              <p className="text-[12px] sm:text-[13px] font-bold text-slate-950 leading-tight">
-                {data.phoneNumber}
-              </p>
-            </div>
+      {/* 2. Dynamic Text Overlays on Left with clean backdrop */}
+      <div className="absolute left-[4.5%] top-[14%] w-[38%] flex flex-col space-y-[1%]">
+        {/* Phone */}
+        <div className="bg-[#D8F8F0]/95 px-1 py-0.5 rounded leading-tight">
+          <p className="text-[12px] sm:text-[13.5px] font-bold text-slate-950">
+            {data.phoneNumber}
+          </p>
+        </div>
 
-            <div>
-              <span className="text-[8.5px] font-semibold text-[#B45309] block tracking-tight">
-                ዜግነት | Nationality
-              </span>
-              <span className="text-[7.5px] text-[#B45309] font-medium block -mt-0.5 mb-0.5">
-                (በተጠቃሚው መልስ | Self Declared)
-              </span>
-              <p className="text-[11px] sm:text-[12px] font-bold text-slate-950 leading-tight">
-                {data.nationalityAmharic} &nbsp;|&nbsp; {data.nationalityEnglish}
-              </p>
-            </div>
-
-            <div>
-              <span className="text-[8.5px] font-semibold text-[#B45309] block mb-0.5 tracking-tight">
-                አድራሻ | Address
-              </span>
-              <div className="text-[10px] sm:text-[11px] font-bold text-slate-950 leading-[1.2]">
-                <p>{data.regionAmharic}</p>
-                <p>{data.regionEnglish}</p>
-                <p>{data.subcityAmharic}</p>
-                <p>{data.subcityEnglish}</p>
-                <p>{data.woredaAmharic}</p>
-                <p>{data.woredaEnglish}</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <div className="text-[7px] font-bold text-teal-800 leading-[1.05] text-right flex flex-col">
-                <span>ፋይዳ</span>
-                <span>ልዩ ቁጥር</span>
-              </div>
-              <div className="bg-white border border-slate-300 rounded px-2 py-0.5 shadow-2xs">
-                <span className="text-[10px] sm:text-[11.5px] font-black tracking-wider text-slate-950">
-                  FIN &nbsp;{data.finNumber}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="shrink-0 flex items-center justify-center p-1 bg-white rounded-lg border border-slate-300/80 shadow-xs h-full aspect-square max-h-[195px] sm:max-h-[215px] my-auto">
-            <img
-              src={qrSource}
-              alt="Identity verification QR code"
-              className="w-full h-full object-contain"
-            />
+        {/* Nationality */}
+        <div className="pt-[6.5%]">
+          <div className="bg-[#D8F8F0]/95 px-1 py-0.5 rounded leading-tight">
+            <p className="text-[11px] sm:text-[12.5px] font-bold text-slate-950">
+              {data.nationalityAmharic} &nbsp;|&nbsp; {data.nationalityEnglish}
+            </p>
           </div>
         </div>
 
-        <footer className="pt-1 mt-1 border-t border-teal-800/15 flex items-center justify-between gap-2">
-          <div className="text-[6.8px] sm:text-[7.2px] text-slate-700 leading-[1.15] max-w-[78%]">
-            <p>
-              ይህ መታወቂያ የጠፋ ካገኙ በቅርብዎ ያለ ፖሊስ ጣቢያ ወይም ለተቋሙ ያስረክቡ። ለተጨማሪ መረጃ 9779 ላይ ይደውሉ ወይም id.et/cardprint ይጎብኙ።
-            </p>
-            <p className="text-[6.2px] sm:text-[6.6px] text-slate-600 mt-0.5">
-              If lost and found, please return to nearby police station or to the institution. Call 9779 or visit id.et/cardprint for more.
-            </p>
+        {/* Address */}
+        <div className="pt-[6%]">
+          <div className="bg-[#D8F8F0]/95 px-1 py-0.5 rounded leading-[1.25] text-[10px] sm:text-[11.5px] font-bold text-slate-950">
+            <p>{data.regionAmharic}</p>
+            <p>{data.regionEnglish}</p>
+            <p>{data.subcityAmharic}</p>
+            <p>{data.subcityEnglish}</p>
+            <p>{data.woredaAmharic}</p>
+            <p>{data.woredaEnglish}</p>
           </div>
+        </div>
+      </div>
 
-          <div className="shrink-0 bg-white border border-slate-300 rounded px-1.5 py-0.5 shadow-2xs text-[8.5px] font-bold">
-            <span className="text-red-700 font-black">SN:</span>{" "}
-            <span className="text-slate-900 font-extrabold">{data.serialNumber}</span>
-          </div>
-        </footer>
+      {/* 3. FIN Number inside FIN Box */}
+      <div className="absolute left-[13.5%] bottom-[12.8%] w-[24%] bg-white px-2 py-0.5 rounded flex items-center">
+        <span className="text-[10px] sm:text-[11.5px] font-black tracking-wider text-slate-950">
+          FIN &nbsp;{data.finNumber}
+        </span>
+      </div>
+
+      {/* 4. Extracted QR Code inside QR Frame */}
+      <div className="absolute right-[4.5%] top-[5%] w-[51%] h-[82%] p-1 flex items-center justify-center">
+        <img
+          src={qrSource}
+          alt="Identity verification QR code"
+          className="w-full h-full object-contain"
+        />
+      </div>
+
+      {/* 5. SN Number inside SN Badge */}
+      <div className="absolute right-[4.5%] bottom-[4.2%] w-[19%] flex items-center justify-center bg-white px-1.5 py-0.5 rounded shadow-2xs text-[8.5px] sm:text-[9.5px] font-black">
+        <span className="text-red-700 font-black mr-1">SN:</span>
+        <span className="text-slate-900 font-extrabold">{data.serialNumber || "65501482"}</span>
       </div>
     </div>
   );
