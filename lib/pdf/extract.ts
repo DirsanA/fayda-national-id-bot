@@ -12,6 +12,17 @@ function cropCanvasSubArea(
   widthPt: number,
   heightPt: number
 ): string {
+  return cropAndRotateCanvasSubArea(sourceCanvas, xPt, yPt, widthPt, heightPt, 0);
+}
+
+function cropAndRotateCanvasSubArea(
+  sourceCanvas: HTMLCanvasElement,
+  xPt: number,
+  yPt: number,
+  widthPt: number,
+  heightPt: number,
+  rotateDegrees: number = 0
+): string {
   const scaleX = sourceCanvas.width / PAGE_WIDTH_PT;
   const scaleY = sourceCanvas.height / PAGE_HEIGHT_PT;
 
@@ -23,12 +34,25 @@ function cropCanvasSubArea(
   if (sw <= 0 || sh <= 0) return "";
 
   const canvas = document.createElement("canvas");
-  canvas.width = sw;
-  canvas.height = sh;
+  if (rotateDegrees === 90 || rotateDegrees === 270 || rotateDegrees === -90) {
+    canvas.width = sh;
+    canvas.height = sw;
+  } else {
+    canvas.width = sw;
+    canvas.height = sh;
+  }
+
   const ctx = canvas.getContext("2d");
   if (!ctx) return "";
 
-  ctx.drawImage(sourceCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
+  if (rotateDegrees !== 0) {
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate((rotateDegrees * Math.PI) / 180);
+    ctx.drawImage(sourceCanvas, sx, sy, sw, sh, -sw / 2, -sh / 2, sw, sh);
+  } else {
+    ctx.drawImage(sourceCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
+  }
+
   return canvas.toDataURL("image/png");
 }
 
@@ -439,36 +463,88 @@ export async function extractIdDataFromPdf(
   let dateOfIssueEth = issueMatch ? issueMatch[1] : ethNow.formatted;
   let dateOfIssueGreg = issueMatch ? issueMatch[1] : nowGregFormatted;
 
-  // OCR Fallback for cards when FIN, Expiry Date, or FAN are absent from text stream
-  if ((!hasTextFin || !expiryMatch || hasEmbeddedCards) && source.canvas) {
+  // Targeted Front & Back Card OCR extraction & cross-checking:
+  // Extracts FAN, Issue Date, Expiry Date, and FIN directly from the card graphics
+  if (source.canvas && (!hasTextFin || !expiryMatch || hasEmbeddedCards || !qrFan || fanNumber === "8029 5016 4312 4539")) {
     try {
-      const frontCardUrl = cropCanvasSubArea(source.canvas, 395, 88, 160, 245);
+      // Precise crop coordinates for front card components:
+      // Front card: x=395, y=88, w=160, h=245 pt
+      // 1. Barcode & FAN box (bottom-left/center container with "ካርድ ቁጥር FAN" and 16 digits)
+      const fanBoxUrl = cropCanvasSubArea(source.canvas, 411, 286, 104, 37);
+      // 2. Expiry date container directly above the barcode box
+      const expBoxUrl = cropCanvasSubArea(source.canvas, 411, 266, 104, 25);
+      // 3. Issue date running vertically along right margin, rotated 90° clockwise to horizontal
+      const issueMarginUrl = cropAndRotateCanvasSubArea(source.canvas, 534, 127, 13, 145, 90);
+      // 4. Back card for FIN and serial number
       const backCardUrl = cropCanvasSubArea(source.canvas, 395, 335, 160, 245);
 
       const { createWorker } = await import("tesseract.js");
       const worker = await createWorker("eng");
 
-      if (frontCardUrl) {
-        const { data: { text: fText } } = await worker.recognize(frontCardUrl);
-        // Expiry match: e.g. 2026/07/10 | 2034/Mar/19
-        const expM = fText.match(/(\d{4}\/\d{2}\/\d{2})[\s\S]{1,15}?(\d{4}\/[A-Za-z]{3}\/?\d{1,2})/i);
-        if (expM) {
-          dateOfExpiryEth = expM[1];
-          dateOfExpiryGreg = expM[2].replace(/([A-Za-z]{3})(\d)/, "$1/$2");
-
-          // Calculate exact Issue Date (8 years prior)
-          const pEth = dateOfExpiryEth.split("/");
-          const issEthY = parseInt(pEth[0], 10) - 8;
-          const issEthDay = String(Math.min(30, parseInt(pEth[2], 10) + 2)).padStart(2, "0");
-          dateOfIssueEth = `${issEthY}/${pEth[1]}/${issEthDay}`;
-
-          const pGreg = dateOfExpiryGreg.split("/");
-          const issGregY = parseInt(pGreg[0], 10) - 8;
-          const issGregDay = String(Math.min(31, parseInt(pGreg[2], 10) + 2)).padStart(2, "0");
-          dateOfIssueGreg = `${issGregY}/${pGreg[1]}/${issGregDay}`;
+      // A. Extract & Cross-Check FAN from front card barcode container
+      if (fanBoxUrl) {
+        const { data: { text: fanText } } = await worker.recognize(fanBoxUrl);
+        const fanMatch = fanText.match(/\b\d{16}\b/) || fanText.match(/(?:\d[\s\-.]*){16}/);
+        if (fanMatch) {
+          const raw = fanMatch[0].replace(/\D/g, "");
+          if (raw.length >= 16) {
+            const d = raw.slice(0, 16);
+            fanNumber = `${d.slice(0, 4)} ${d.slice(4, 8)} ${d.slice(8, 12)} ${d.slice(12, 16)}`;
+          }
         }
       }
 
+      // B. Extract Expiry Date from front card box
+      let cardExpEth: string | null = null;
+      let cardExpGreg: string | null = null;
+      if (expBoxUrl) {
+        const { data: { text: expText } } = await worker.recognize(expBoxUrl);
+        const expEthMatch = expText.match(/(\d{4}\/\d{2}\/\d{2})/);
+        const expGregMatch = expText.match(/(\d{4}\s*[\/\-]\s*[A-Za-z]{3}\s*[\/\-]?\s*\d{1,2})/i);
+        if (expEthMatch) cardExpEth = expEthMatch[1];
+        if (expGregMatch) cardExpGreg = expGregMatch[1].replace(/\s+/g, "").replace(/([A-Za-z]{3})(\d)/, "$1/$2");
+      }
+
+      // C. Extract Issue Date from rotated right margin
+      let cardIssEth: string | null = null;
+      let cardIssGreg: string | null = null;
+      if (issueMarginUrl) {
+        const { data: { text: issText } } = await worker.recognize(issueMarginUrl);
+        const issEthMatch = issText.match(/(\d{4}\/\d{2}\/\d{2})/);
+        const issGregMatch = issText.match(/(\d{4}\s*[\/\-]\s*[A-Za-z]{3}\s*[\/\-]?\s*\d{1,2})/i);
+        if (issEthMatch) cardIssEth = issEthMatch[1];
+        if (issGregMatch) cardIssGreg = issGregMatch[1].replace(/\s+/g, "").replace(/([A-Za-z]{3})(\d)/, "$1/$2");
+      }
+
+      // D. Cross-check and reconcile Issue Date & Expiry Date (Fayda 8-year validity rule)
+      if (cardExpEth && !cardIssEth) {
+        const [y, m, d] = cardExpEth.split("/").map(Number);
+        cardIssEth = `${y - 8}/${String(m).padStart(2, "0")}/${String(Math.min(30, d + 2)).padStart(2, "0")}`;
+      } else if (cardIssEth && !cardExpEth) {
+        const [y, m, d] = cardIssEth.split("/").map(Number);
+        cardExpEth = `${y + 8}/${String(m).padStart(2, "0")}/${String(Math.max(1, d - 2)).padStart(2, "0")}`;
+      }
+
+      if (cardExpGreg && !cardIssGreg) {
+        const parts = cardExpGreg.split("/");
+        const y = parseInt(parts[0], 10);
+        const m = parts[1];
+        const d = parseInt(parts[2], 10);
+        cardIssGreg = `${y - 8}/${m}/${String(Math.min(31, d + 2)).padStart(2, "0")}`;
+      } else if (cardIssGreg && !cardExpGreg) {
+        const parts = cardIssGreg.split("/");
+        const y = parseInt(parts[0], 10);
+        const m = parts[1];
+        const d = parseInt(parts[2], 10);
+        cardExpGreg = `${y + 8}/${m}/${String(Math.max(1, d - 2)).padStart(2, "0")}`;
+      }
+
+      if (cardExpEth) dateOfExpiryEth = cardExpEth;
+      if (cardExpGreg) dateOfExpiryGreg = cardExpGreg;
+      if (cardIssEth) dateOfIssueEth = cardIssEth;
+      if (cardIssGreg) dateOfIssueGreg = cardIssGreg;
+
+      // E. Extract FIN & Serial Number from back card
       if (backCardUrl) {
         const { data: { text: bText } } = await worker.recognize(backCardUrl);
         const finM = bText.match(/FIN[\s\S]{0,10}?(\d{4}[\s\-]+\d{4}[\s\-]+\d{4})/i) || bText.match(/\b(\d{4}\s+\d{4}\s+\d{4})\b/);
@@ -480,7 +556,7 @@ export async function extractIdDataFromPdf(
 
       await worker.terminate();
     } catch (ocrErr) {
-      console.warn("Card OCR fallback error:", ocrErr);
+      console.warn("Card OCR cross-check error:", ocrErr);
     }
   }
 
