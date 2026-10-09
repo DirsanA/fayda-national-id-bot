@@ -1,4 +1,4 @@
-import { DocumentWorkflow } from "@/components/DocumentWorkflow";
+import { DocumentWorkflowClient } from "@/components/DocumentWorkflowClient";
 
 export default function Home() {
   return (
@@ -12,7 +12,7 @@ export default function Home() {
           </p>
         </header>
 
-        <DocumentWorkflow />
+        <DocumentWorkflowClient />
       </section>
     </main>
   );
