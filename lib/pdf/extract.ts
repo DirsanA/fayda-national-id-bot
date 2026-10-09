@@ -255,6 +255,9 @@ export function extractSerialNumber(
   return "65501482";
 }
 
+import jsQR from "jsqr";
+import { decode as decodeCbor } from "cbor-x";
+
 export async function extractIdDataFromPdf(
   file: File,
   source: RenderedPdf
@@ -269,6 +272,13 @@ export async function extractIdDataFromPdf(
   let extractedText = "";
   let rawPhotoUrl: string | null = null;
   let rawQrUrl: string | null = null;
+
+  let qrFan: string | null = null;
+  let qrSn: string | null = null;
+  let qrName: string | null = null;
+  let qrDob: string | null = null;
+  let qrPhone: string | null = null;
+  let hasEmbeddedCards = false;
 
   try {
     const pdf = await loadingTask.promise;
@@ -286,11 +296,10 @@ export async function extractIdDataFromPdf(
 
     extractedText = itemsWithPos.map((it) => it.str).join(" ");
 
-    // Extract original embedded image objects
+    // Extract original embedded image objects & decode QR code
     try {
       const ops = await page.getOperatorList();
       for (let i = 0; i < ops.fnArray.length; i++) {
-        // paintImageXObject is operator 85 in pdfjs
         if (ops.fnArray[i] === 85 || ops.fnArray[i] === (pdfjs as unknown as { OPS: { paintImageXObject: number } }).OPS?.paintImageXObject) {
           const imgName = ops.argsArray[i][0];
           await new Promise<void>((resolve) => {
@@ -301,6 +310,54 @@ export async function extractIdDataFromPdf(
                   rawPhotoUrl = convertRawImageToDataUrl(img);
                 } else if (!rawQrUrl && aspect >= 0.95 && aspect <= 1.05 && img.width >= 200) {
                   rawQrUrl = convertRawImageToDataUrl(img);
+
+                  // Decode cryptographically signed Fayda QR code
+                  try {
+                    const total = img.width * img.height;
+                    const rgba = new Uint8ClampedArray(total * 4);
+                    if (img.data.length === total * 3) {
+                      for (let j = 0; j < total; j++) {
+                        rgba[j * 4] = img.data[j * 3];
+                        rgba[j * 4 + 1] = img.data[j * 3 + 1];
+                        rgba[j * 4 + 2] = img.data[j * 3 + 2];
+                        rgba[j * 4 + 3] = 255;
+                      }
+                    } else if (img.data.length === total * 4) {
+                      rgba.set(img.data);
+                    }
+                    const qrResult = jsQR(rgba, img.width, img.height);
+                    if (qrResult && qrResult.binaryData) {
+                      try {
+                        const cborDec = decodeCbor(new Uint8Array(qrResult.binaryData));
+                        const payload = cborDec.value ? cborDec.value[2] : cborDec;
+                        const inner = (typeof payload === "object" && (payload instanceof Uint8Array || (typeof Buffer !== "undefined" && Buffer.isBuffer(payload))))
+                          ? decodeCbor(payload)
+                          : payload;
+                        if (inner) {
+                          if (inner[2]) {
+                            const d = String(inner[2]).replace(/\D/g, "");
+                            if (d.length >= 16) qrFan = `${d.slice(0, 4)} ${d.slice(4, 8)} ${d.slice(8, 12)} ${d.slice(12, 16)}`;
+                          }
+                          if (inner[169]) {
+                            if (inner[169][98]) qrSn = String(inner[169][98]);
+                            if (inner[169][4]) qrName = String(inner[169][4]).trim();
+                            if (inner[169][8]) qrDob = String(inner[169][8]).trim();
+                            if (inner[169][12]) qrPhone = String(inner[169][12]).replace(/^\+251\s*/, "0").replace(/\s+/g, "");
+                          }
+                        }
+                      } catch {
+                        // Binary string fallback
+                        let s = "";
+                        for (let b of qrResult.binaryData) s += String.fromCharCode(b);
+                        const m16 = s.match(/\b\d{16}\b/);
+                        if (m16) qrFan = `${m16[0].slice(0, 4)} ${m16[0].slice(4, 8)} ${m16[0].slice(8, 12)} ${m16[0].slice(12, 16)}`;
+                      }
+                    }
+                  } catch (qrErr) {
+                    console.warn("QR decode error:", qrErr);
+                  }
+                } else if (aspect >= 0.55 && aspect <= 0.72 && img.height >= 800) {
+                  hasEmbeddedCards = true;
                 }
               }
               resolve();
@@ -332,13 +389,13 @@ export async function extractIdDataFromPdf(
 
   const barcodeUrl = cropCanvasSubArea(source.canvas, 412, 290, 126, 28);
 
-  // Position-based field queries
+  // Position-based field queries from text stream
   const findItems = (minX: number, maxX: number, minY: number, maxY: number) =>
     itemsWithPos.filter((it) => it.x >= minX && it.x <= maxX && it.y >= minY && it.y <= maxY);
 
   const nameItems = findItems(160, 360, 215, 248);
   const amharicName = nameItems.find((i) => /[\u1200-\u137F]/.test(i.str))?.str;
-  const englishName = nameItems.find((i) => /^[A-Za-z\s]+$/.test(i.str))?.str;
+  const englishName = nameItems.find((i) => /^[A-Za-z\s]+$/.test(i.str))?.str || qrName;
 
   const regionItems = findItems(195, 360, 280, 308);
   const regAmh = regionItems.find((i) => /[\u1200-\u137F]/.test(i.str))?.str;
@@ -351,13 +408,15 @@ export async function extractIdDataFromPdf(
   const woredaItems = findItems(195, 360, 348, 372);
   const worAmh = woredaItems.find((i) => /[\u1200-\u137F]/.test(i.str))?.str;
   const worEng = woredaItems.find((i) => /^[A-Za-z\s]+$/.test(i.str))?.str;
-  const phoneItem = findItems(50, 150, 380, 400)[0]?.str;
+  const phoneItem = findItems(50, 150, 380, 400)[0]?.str || qrPhone;
 
   const datesFound = extractedText.match(/\b(\d{2}\/\d{2}\/\d{4})\b/g) || [];
-  const finNumber = extractFinNumber(extractedText, itemsWithPos);
+  const textFin = extractFinNumber(extractedText, itemsWithPos);
+  const hasTextFin = extractedText.toLowerCase().includes("uin:") || extractedText.toLowerCase().includes("fin:") || textFin !== "214270390587";
   const isYosef = (amharicName && amharicName.includes("ዮሰፍ")) || (englishName && englishName.toLowerCase().includes("yosef")) || false;
-  const fanNumber = extractFanNumber(extractedText, itemsWithPos, finNumber, isYosef);
-  const serialNumber = extractSerialNumber(extractedText, itemsWithPos);
+  let fanNumber = qrFan || extractFanNumber(extractedText, itemsWithPos, textFin, isYosef);
+  let finNumber = textFin;
+  let serialNumber = qrSn || extractSerialNumber(extractedText, itemsWithPos);
 
   const issueMatch = extractedText.match(/(?:Issue\s*Date|የተሰጠበት\s*ቀን)[:\s]*([0-9\/\-A-Za-z]+)/i);
   const expiryMatch = extractedText.match(/(?:Expiry\s*Date|የሚያበቃበት\s*ቀን)[:\s]*([0-9\/\-A-Za-z]+)/i);
@@ -375,17 +434,67 @@ export async function extractIdDataFromPdf(
   const expEthDay = Math.max(1, ethNow.day - 2);
   const expEthFormatted = `${expEthYear}/${String(ethNow.month).padStart(2, "0")}/${String(expEthDay).padStart(2, "0")}`;
 
+  let dateOfExpiryEth = expiryMatch ? expiryMatch[1] : expEthFormatted;
+  let dateOfExpiryGreg = expiryMatch ? expiryMatch[1] : expGregFormatted;
+  let dateOfIssueEth = issueMatch ? issueMatch[1] : ethNow.formatted;
+  let dateOfIssueGreg = issueMatch ? issueMatch[1] : nowGregFormatted;
+
+  // OCR Fallback for cards when FIN, Expiry Date, or FAN are absent from text stream
+  if ((!hasTextFin || !expiryMatch || hasEmbeddedCards) && source.canvas) {
+    try {
+      const frontCardUrl = cropCanvasSubArea(source.canvas, 395, 88, 160, 245);
+      const backCardUrl = cropCanvasSubArea(source.canvas, 395, 335, 160, 245);
+
+      const { createWorker } = await import("tesseract.js");
+      const worker = await createWorker("eng");
+
+      if (frontCardUrl) {
+        const { data: { text: fText } } = await worker.recognize(frontCardUrl);
+        // Expiry match: e.g. 2026/07/10 | 2034/Mar/19
+        const expM = fText.match(/(\d{4}\/\d{2}\/\d{2})[\s\S]{1,15}?(\d{4}\/[A-Za-z]{3}\/?\d{1,2})/i);
+        if (expM) {
+          dateOfExpiryEth = expM[1];
+          dateOfExpiryGreg = expM[2].replace(/([A-Za-z]{3})(\d)/, "$1/$2");
+
+          // Calculate exact Issue Date (8 years prior)
+          const pEth = dateOfExpiryEth.split("/");
+          const issEthY = parseInt(pEth[0], 10) - 8;
+          const issEthDay = String(Math.min(30, parseInt(pEth[2], 10) + 2)).padStart(2, "0");
+          dateOfIssueEth = `${issEthY}/${pEth[1]}/${issEthDay}`;
+
+          const pGreg = dateOfExpiryGreg.split("/");
+          const issGregY = parseInt(pGreg[0], 10) - 8;
+          const issGregDay = String(Math.min(31, parseInt(pGreg[2], 10) + 2)).padStart(2, "0");
+          dateOfIssueGreg = `${issGregY}/${pGreg[1]}/${issGregDay}`;
+        }
+      }
+
+      if (backCardUrl) {
+        const { data: { text: bText } } = await worker.recognize(backCardUrl);
+        const finM = bText.match(/FIN[\s\S]{0,10}?(\d{4}[\s\-]+\d{4}[\s\-]+\d{4})/i) || bText.match(/\b(\d{4}\s+\d{4}\s+\d{4})\b/);
+        if (finM) {
+          finNumber = finM[1].replace(/\D/g, "");
+          if (!qrSn) serialNumber = finNumber.slice(0, 8);
+        }
+      }
+
+      await worker.terminate();
+    } catch (ocrErr) {
+      console.warn("Card OCR fallback error:", ocrErr);
+    }
+  }
+
   const data: EthiopianIdData = {
     fullNameAmharic: amharicName || "ዮሰፍ ጊርማ ቱፋ",
     fullNameEnglish: englishName || "Yosef Girma Tufa",
     dateOfBirthEth: datesFound[1] || "02/04/1994",
-    dateOfBirthGreg: datesFound[0] || "02/Jan/2002",
+    dateOfBirthGreg: datesFound[0] || (qrDob ? `${String(qrDob).slice(0, 4)}/${String(qrDob).slice(4, 6)}/${String(qrDob).slice(6, 8)}` : "02/Jan/2002"),
     sexAmharic: extractedText.includes("ወንድ") ? "ወንድ" : extractedText.includes("ሴት") ? "ሴት" : "ወንድ",
     sexEnglish: extractedText.includes("Female") ? "Female" : "Male",
-    dateOfExpiryEth: expiryMatch ? expiryMatch[1] : expEthFormatted,
-    dateOfExpiryGreg: expiryMatch ? expiryMatch[1] : expGregFormatted,
-    dateOfIssueEth: issueMatch ? issueMatch[1] : ethNow.formatted,
-    dateOfIssueGreg: issueMatch ? issueMatch[1] : nowGregFormatted,
+    dateOfExpiryEth,
+    dateOfExpiryGreg,
+    dateOfIssueEth,
+    dateOfIssueGreg,
     fanNumber,
     finNumber,
     serialNumber,

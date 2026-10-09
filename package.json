@@ -9,11 +9,14 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "cbor-x": "^1.6.6",
+    "jsqr": "^1.4.0",
     "next": "15.5.9",
     "pdf-lib": "1.17.1",
     "pdfjs-dist": "5.4.54",
     "react": "19.1.1",
-    "react-dom": "19.1.1"
+    "react-dom": "19.1.1",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "3.3.1",
