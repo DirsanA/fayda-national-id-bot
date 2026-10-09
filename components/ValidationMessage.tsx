@@ -4,14 +4,14 @@ type ValidationMessageProps = {
 };
 
 const styles = {
-  error: "border-red-200 bg-red-50 text-red-800",
-  success: "border-emerald-200 bg-emerald-50 text-emerald-800",
-  info: "border-blue-200 bg-blue-50 text-blue-800",
+  error: "border-red-500/30 bg-red-500/10 text-red-300",
+  success: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+  info: "border-blue-500/30 bg-blue-500/10 text-blue-300",
 };
 
 export function ValidationMessage({ tone, children }: ValidationMessageProps) {
   return (
-    <div className={`rounded-lg border px-4 py-3 text-sm ${styles[tone]}`} role={tone === "error" ? "alert" : "status"}>
+    <div className={`rounded-xl border px-4 py-3 text-sm font-medium backdrop-blur-md ${styles[tone]}`} role={tone === "error" ? "alert" : "status"}>
       {children}
     </div>
   );

@@ -7,11 +7,8 @@ import { createRedactedSamplePdf } from "@/lib/pdf/sample";
 import { validateConfiguredTemplate } from "@/lib/pdf/validate-template";
 import type { RenderedPdf } from "@/types/print";
 import type { EthiopianIdData } from "@/types/id-card";
-import { ID1_HEIGHT_MM, ID1_WIDTH_MM } from "@/types/print";
 import { PdfUploader } from "./PdfUploader";
 import { PdfViewer } from "./PdfViewer";
-import { LandscapeCardFront } from "./LandscapeCardFront";
-import { LandscapeCardBack } from "./LandscapeCardBack";
 import { PrintPreview } from "./PrintPreview";
 import { ValidationMessage } from "./ValidationMessage";
 
@@ -80,13 +77,13 @@ export function DocumentWorkflow() {
       <PdfUploader file={file} onReady={selectFile} onClear={resetDocument} />
 
       {!file && (
-        <div className="flex justify-center">
+        <div className="flex justify-center pt-2">
           <button
             type="button"
             onClick={() => void loadSample()}
-            className="text-sm font-semibold text-teal-800 underline underline-offset-4 hover:text-teal-900 transition-colors"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/40 px-4 py-2 text-xs font-semibold text-slate-400 hover:border-slate-700 hover:bg-slate-800 hover:text-slate-200 transition-all shadow-xs"
           >
-            Load synthetic redacted template PDF for development
+            <span>✨</span> Load sample test PDF template
           </button>
         </div>
       )}
@@ -94,66 +91,25 @@ export function DocumentWorkflow() {
       {file && <PdfViewer file={file} onRendered={handleRendered} />}
 
       {processing && (
-        <ValidationMessage tone="info">
-          Source PDF verified. Extracting identity assets and reconstructing true landscape ID-1 cards...
-        </ValidationMessage>
+        <div className="space-y-4 rounded-2xl border border-blue-500/30 bg-blue-950/20 p-5 backdrop-blur-xl">
+          <ValidationMessage tone="info">
+            Source PDF verified. Extracting identity assets and reconstructing true landscape ID-1 cards...
+          </ValidationMessage>
+          <div className="relative h-24 w-full overflow-hidden rounded-xl bg-slate-900 border border-slate-800">
+            <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-blue-500/20 to-transparent" />
+            <div className="flex h-full items-center justify-center space-x-3">
+              <div className="h-6 w-6 rounded-full border-2 border-blue-400/30 border-t-blue-400 animate-spin" />
+              <span className="text-xs sm:text-sm font-semibold text-blue-300 animate-pulse">
+                Processing high-resolution card layout transformation...
+              </span>
+            </div>
+          </div>
+        </div>
       )}
 
       {error && <ValidationMessage tone="error">{error}</ValidationMessage>}
 
-      {/* Main Landscape Cards Result Display (B) */}
-      {idData && (
-        <section
-          className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-7 shadow-sm space-y-6"
-          aria-label="True Landscape ID Card Output"
-        >
-          <div className="flex flex-col justify-between gap-2 border-b border-slate-100 pb-4 sm:flex-row sm:items-center">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
-                  Target B
-                </span>
-                <h2 className="text-lg font-bold text-slate-900">
-                  Official Landscape ID-1 Cards (Front &amp; Back)
-                </h2>
-              </div>
-              <p className="mt-1 text-sm text-slate-600">
-                True horizontal reflow with preserved image aspect ratios and un-rotated typography.
-              </p>
-            </div>
-            <div className="text-right">
-              <span className="inline-block rounded-md bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                Physical Print Size: {ID1_WIDTH_MM.toFixed(2)} × {ID1_HEIGHT_MM.toFixed(2)} mm (ID-1)
-              </span>
-            </div>
-          </div>
 
-          {/* Side-by-side Landscape Card Grid */}
-          <div className="grid gap-6 lg:grid-cols-2">
-            {/* Front Card */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                  Front Card (ፊት)
-                </span>
-                <span className="text-[11px] text-slate-500">85.60 × 53.98 mm</span>
-              </div>
-              <LandscapeCardFront data={idData} className="w-full" />
-            </div>
-
-            {/* Back Card */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                  Back Card (ጀርባ)
-                </span>
-                <span className="text-[11px] text-slate-500">85.60 × 53.98 mm</span>
-              </div>
-              <LandscapeCardBack data={idData} className="w-full" />
-            </div>
-          </div>
-        </section>
-      )}
 
       {output && <PrintPreview pdf={output} />}
     </div>

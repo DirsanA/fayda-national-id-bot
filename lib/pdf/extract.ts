@@ -90,27 +90,40 @@ function convertRawImageToDataUrl(img: { width: number; height: number; data: Ui
   }
 }
 
+const photoBgCache = new Map<string, string>();
+
 export function removePhotoBackground(photoDataUrl: string): Promise<string> {
   return new Promise((resolve) => {
     if (!photoDataUrl || typeof window === "undefined") {
       resolve(photoDataUrl);
       return;
     }
+    if (photoBgCache.has(photoDataUrl)) {
+      resolve(photoBgCache.get(photoDataUrl)!);
+      return;
+    }
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
       try {
-        const w = img.width;
-        const h = img.height;
+        const maxEdge = 600;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxEdge || h > maxEdge) {
+          const scale = maxEdge / Math.max(w, h);
+          w = Math.round(w * scale);
+          h = Math.round(h * scale);
+        }
         const canvas = document.createElement("canvas");
         canvas.width = w;
         canvas.height = h;
         const ctx = canvas.getContext("2d");
         if (!ctx) {
+          photoBgCache.set(photoDataUrl, photoDataUrl);
           resolve(photoDataUrl);
           return;
         }
-        ctx.drawImage(img, 0, 0);
+        ctx.drawImage(img, 0, 0, w, h);
 
         const imgData = ctx.getImageData(0, 0, w, h);
         const data = imgData.data;
@@ -231,8 +244,11 @@ export function removePhotoBackground(photoDataUrl: string): Promise<string> {
         }
 
         ctx.putImageData(imgData, 0, 0);
-        resolve(canvas.toDataURL("image/png"));
+        const resultUrl = canvas.toDataURL("image/png");
+        photoBgCache.set(photoDataUrl, resultUrl);
+        resolve(resultUrl);
       } catch {
+        photoBgCache.set(photoDataUrl, photoDataUrl);
         resolve(photoDataUrl);
       }
     };

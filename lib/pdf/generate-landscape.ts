@@ -419,13 +419,31 @@ export async function createPrintReadyLandscapePdf(data: EthiopianIdData): Promi
   const pageWidthPt = mmToPoints(ID1_WIDTH_MM);
   const pageHeightPt = mmToPoints(ID1_HEIGHT_MM);
 
-  // 1. Render Front Card dynamically from extracted data
-  const frontCanvas = await renderFrontCardToCanvas(data);
-  const frontBlob = await new Promise<Blob>((resolve, reject) =>
-    frontCanvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Failed to encode front card"))), "image/png")
-  );
-  const frontBytes = await frontBlob.arrayBuffer();
-  const frontImage = await output.embedPng(frontBytes);
+  // 1 & 2. Parallelize Front & Back card canvas rendering and background photo processing
+  const [frontCanvas, backCanvas] = await Promise.all([
+    renderFrontCardToCanvas(data),
+    renderBackCardToCanvas(data),
+  ]);
+
+  // 3. Parallelize PNG encoding and embedding
+  const [frontBlob, backBlob] = await Promise.all([
+    new Promise<Blob>((resolve, reject) =>
+      frontCanvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Failed to encode front card"))), "image/png")
+    ),
+    new Promise<Blob>((resolve, reject) =>
+      backCanvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Failed to encode back card"))), "image/png")
+    ),
+  ]);
+
+  const [frontBytes, backBytes] = await Promise.all([
+    frontBlob.arrayBuffer(),
+    backBlob.arrayBuffer(),
+  ]);
+
+  const [frontImage, backImage] = await Promise.all([
+    output.embedPng(frontBytes),
+    output.embedPng(backBytes),
+  ]);
 
   const page1 = output.addPage([pageWidthPt, pageHeightPt]);
   page1.drawImage(frontImage, {
@@ -434,14 +452,6 @@ export async function createPrintReadyLandscapePdf(data: EthiopianIdData): Promi
     width: pageWidthPt,
     height: pageHeightPt,
   });
-
-  // 2. Render Back Card dynamically from extracted data
-  const backCanvas = await renderBackCardToCanvas(data);
-  const backBlob = await new Promise<Blob>((resolve, reject) =>
-    backCanvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Failed to encode back card"))), "image/png")
-  );
-  const backBytes = await backBlob.arrayBuffer();
-  const backImage = await output.embedPng(backBytes);
 
   const page2 = output.addPage([pageWidthPt, pageHeightPt]);
   page2.drawImage(backImage, {

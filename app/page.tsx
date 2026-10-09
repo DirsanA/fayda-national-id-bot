@@ -2,13 +2,18 @@ import { DocumentWorkflow } from "@/components/DocumentWorkflow";
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-10 text-slate-950 sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-slate-950 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.15),rgba(255,255,255,0))] px-4 py-12 text-slate-100 sm:px-6 lg:px-8">
       <section className="mx-auto max-w-4xl">
-        <header className="mb-8">
-          <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-blue-700">Authorized workflow</p>
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Document Print Utility</h1>
-          <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
-            Prepare existing card artwork from an authorized source PDF for physical-card printing. Identity data and source artwork cannot be edited here.
+        <header className="mb-10 text-center sm:text-left">
+          <div className="inline-flex items-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/10 px-3.5 py-1 text-xs font-semibold uppercase tracking-widest text-blue-400 backdrop-blur-md">
+            <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
+            Authorized Print Workflow
+          </div>
+          <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-white sm:text-5xl">
+            Document Print Utility
+          </h1>
+          <p className="mt-3 max-w-2xl text-base leading-relaxed text-slate-400">
+            Prepare existing card artwork from an authorized source PDF for physical ID-1 card printing. Pure client-side transformation maintaining maximum privacy.
           </p>
         </header>
 
@@ -17,3 +22,4 @@ export default function Home() {
     </main>
   );
 }
+
