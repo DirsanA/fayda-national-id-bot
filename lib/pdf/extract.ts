@@ -90,6 +90,157 @@ function convertRawImageToDataUrl(img: { width: number; height: number; data: Ui
   }
 }
 
+export function removePhotoBackground(photoDataUrl: string): Promise<string> {
+  return new Promise((resolve) => {
+    if (!photoDataUrl || typeof window === "undefined") {
+      resolve(photoDataUrl);
+      return;
+    }
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        const w = img.width;
+        const h = img.height;
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(photoDataUrl);
+          return;
+        }
+        ctx.drawImage(img, 0, 0);
+
+        const imgData = ctx.getImageData(0, 0, w, h);
+        const data = imgData.data;
+
+        // Sample background color from top corners (average of 15x15 pixel patches)
+        let bgR = 0, bgG = 0, bgB = 0, bgCount = 0;
+        const sampleSize = Math.max(5, Math.min(25, Math.floor(w * 0.08)));
+        for (let y = 0; y < sampleSize; y++) {
+          for (let x = 0; x < sampleSize; x++) {
+            const idx1 = (y * w + x) * 4;
+            bgR += data[idx1]; bgG += data[idx1 + 1]; bgB += data[idx1 + 2]; bgCount++;
+            const idx2 = (y * w + (w - 1 - x)) * 4;
+            bgR += data[idx2]; bgG += data[idx2 + 1]; bgB += data[idx2 + 2]; bgCount++;
+          }
+        }
+        bgR /= bgCount; bgG /= bgCount; bgB /= bgCount;
+
+        // If background is already dark or non-neutral, skip removal
+        if (bgR < 180 && bgG < 180 && bgB < 180) {
+          resolve(photoDataUrl);
+          return;
+        }
+
+        const solidThresh = 35;
+        const softThresh = 65;
+        const colorDist = (r: number, g: number, b: number) => {
+          const dr = r - bgR;
+          const dg = g - bgG;
+          const db = b - bgB;
+          return Math.sqrt(dr * dr + dg * dg + db * db);
+        };
+
+        const visited = new Uint8Array(w * h);
+        const queue: number[] = [];
+
+        // Seed top edge and upper side edges
+        for (let x = 0; x < w; x++) {
+          const idx = (0 * w + x) * 4;
+          if (colorDist(data[idx], data[idx + 1], data[idx + 2]) < softThresh) {
+            visited[x] = 1;
+            queue.push(x);
+          }
+        }
+        const sideLimit = Math.round(h * 0.75);
+        for (let y = 1; y < sideLimit; y++) {
+          const idxL = (y * w + 0) * 4;
+          if (colorDist(data[idxL], data[idxL + 1], data[idxL + 2]) < softThresh && !visited[y * w]) {
+            visited[y * w] = 1;
+            queue.push(y * w);
+          }
+          const idxR = (y * w + (w - 1)) * 4;
+          if (colorDist(data[idxR], data[idxR + 1], data[idxR + 2]) < softThresh && !visited[y * w + (w - 1)]) {
+            visited[y * w] = 1;
+            queue.push(y * w);
+          }
+        }
+
+        let head = 0;
+        while (head < queue.length) {
+          const p = queue[head++];
+          const px = p % w;
+          const py = Math.floor(p / w);
+
+          if (px > 0) {
+            const np = p - 1;
+            if (!visited[np]) {
+              const nIdx = np * 4;
+              if (colorDist(data[nIdx], data[nIdx + 1], data[nIdx + 2]) < softThresh) {
+                visited[np] = 1;
+                queue.push(np);
+              }
+            }
+          }
+          if (px < w - 1) {
+            const np = p + 1;
+            if (!visited[np]) {
+              const nIdx = np * 4;
+              if (colorDist(data[nIdx], data[nIdx + 1], data[nIdx + 2]) < softThresh) {
+                visited[np] = 1;
+                queue.push(np);
+              }
+            }
+          }
+          if (py > 0) {
+            const np = p - w;
+            if (!visited[np]) {
+              const nIdx = np * 4;
+              if (colorDist(data[nIdx], data[nIdx + 1], data[nIdx + 2]) < softThresh) {
+                visited[np] = 1;
+                queue.push(np);
+              }
+            }
+          }
+          if (py < h - 1) {
+            const np = p + w;
+            if (!visited[np]) {
+              const nIdx = np * 4;
+              if (colorDist(data[nIdx], data[nIdx + 1], data[nIdx + 2]) < softThresh) {
+                visited[np] = 1;
+                queue.push(np);
+              }
+            }
+          }
+        }
+
+        // Apply smooth transparency to visited background pixels
+        for (let p = 0; p < w * h; p++) {
+          if (visited[p]) {
+            const idx = p * 4;
+            const dist = colorDist(data[idx], data[idx + 1], data[idx + 2]);
+            if (dist <= solidThresh) {
+              data[idx + 3] = 0;
+            } else {
+              const factor = (dist - solidThresh) / (softThresh - solidThresh);
+              data[idx + 3] = Math.round(factor * 255);
+            }
+          }
+        }
+
+        ctx.putImageData(imgData, 0, 0);
+        resolve(canvas.toDataURL("image/png"));
+      } catch {
+        resolve(photoDataUrl);
+      }
+    };
+    img.onerror = () => resolve(photoDataUrl);
+    img.src = photoDataUrl;
+  });
+}
+
 export function convertGregorianToEthiopian(date: Date = new Date()): { year: number; month: number; day: number; formatted: string } {
   const gYear = date.getFullYear();
   const gMonth = date.getMonth() + 1;
@@ -403,6 +554,15 @@ export async function extractIdDataFromPdf(
   if (!photoUrl) {
     photoUrl = cropCanvasSubArea(source.canvas, 431, 122, 88, 100);
     if (!photoUrl) photoUrl = cropCanvasSubArea(source.canvas, 65, 120, 115, 130);
+  }
+
+  // Remove solid/studio background from portrait photo so it blends seamlessly without background
+  if (photoUrl) {
+    try {
+      photoUrl = await removePhotoBackground(photoUrl);
+    } catch {
+      // Continue with original photo on error
+    }
   }
 
   let qrCodeUrl: string = rawQrUrl || "";

@@ -1,6 +1,7 @@
 import { PDFDocument } from "pdf-lib";
 import { ID1_HEIGHT_MM, ID1_WIDTH_MM } from "@/types/print";
 import type { EthiopianIdData } from "@/types/id-card";
+import { removePhotoBackground } from "@/lib/pdf/extract";
 
 const MM_PER_INCH = 25.4;
 const PDF_POINTS_PER_INCH = 72;
@@ -257,10 +258,11 @@ export async function renderFrontCardToCanvas(data: EthiopianIdData): Promise<HT
     console.warn("Could not load front template:", err);
   }
 
-  // 2. Primary Portrait Photo (fits photo slot perfectly: x: 73, y: 138, w: 302, h: 430)
+  // 2. Primary Portrait Photo without background (fits photo slot perfectly: x: 73, y: 138, w: 302, h: 430)
   if (data.photoUrl) {
     try {
-      const photoImg = await loadImage(data.photoUrl);
+      const cleanPhotoUrl = await removePhotoBackground(data.photoUrl);
+      const photoImg = await loadImage(cleanPhotoUrl);
       ctx.save();
       drawRoundedRect(ctx, 73, 138, 302, 430, 10);
       ctx.clip();
@@ -307,7 +309,8 @@ export async function renderFrontCardToCanvas(data: EthiopianIdData): Promise<HT
   // 5. Ghost Photo on bottom right (fits ghost slot below Fayda watermark: x: 830, y: 460, w: 113, h: 134)
   if (data.photoUrl) {
     try {
-      const ghostImg = await loadImage(data.photoUrl);
+      const cleanPhotoUrl = await removePhotoBackground(data.photoUrl);
+      const ghostImg = await loadImage(cleanPhotoUrl);
       ctx.save();
       ctx.globalAlpha = 0.75;
       drawRoundedRect(ctx, 830, 460, 113, 134, 8);

@@ -28,9 +28,9 @@ export function LandscapeCardFront({ data, className = "" }: LandscapeCardFrontP
         draggable={false}
       />
 
-      {/* 2. Extracted Portrait Photo */}
+      {/* 2. Extracted Portrait Photo without background */}
       {data.photoUrl && (
-        <div className="absolute left-[7.2%] top-[21.6%] w-[29.9%] h-[67.4%] rounded-lg overflow-hidden shadow-2xs border border-teal-800/15">
+        <div className="absolute left-[7.2%] top-[21.6%] w-[29.9%] h-[67.4%] rounded-lg overflow-hidden">
           <img
             src={data.photoUrl}
             alt={`Portrait of ${data.fullNameEnglish}`}
@@ -76,7 +76,7 @@ export function LandscapeCardFront({ data, className = "" }: LandscapeCardFrontP
 
       {/* 5. Extracted Ghost Photo (positioned below Fayda watermark) */}
       {data.photoUrl && (
-        <div className="absolute left-[82.1%] top-[72.1%] w-[11.2%] h-[21.0%] rounded-md overflow-hidden opacity-75 shadow-2xs pointer-events-none">
+        <div className="absolute left-[82.1%] top-[72.1%] w-[11.2%] h-[21.0%] rounded-md overflow-hidden opacity-75 pointer-events-none">
           <img src={data.photoUrl} alt="Ghost portrait" className="w-full h-full object-cover" />
         </div>
       )}
