@@ -80,6 +80,17 @@ export function LandscapeCardFront({ data, className = "" }: LandscapeCardFrontP
           <img src={data.photoUrl} alt="Ghost portrait" className="w-full h-full object-cover" />
         </div>
       )}
+
+      {/* 6. Dynamic Vertical Issue Date on Left Margin */}
+      <div
+        className="absolute left-[3.6%] bottom-[6.5%] origin-bottom-left -rotate-90 pointer-events-none select-none whitespace-nowrap text-[8.5px] sm:text-[10px] font-bold"
+        style={{ letterSpacing: "0.02em" }}
+      >
+        <span className="text-[#C68932]">የተሰጠበት ቀን: </span>
+        <span className="text-slate-900">{data.dateOfIssueEth}</span>
+        <span className="text-[#C68932]">&nbsp;&nbsp;Date of Issue: </span>
+        <span className="text-slate-900">{formatGregorianDate(data.dateOfIssueGreg)}</span>
+      </div>
     </div>
   );
 }

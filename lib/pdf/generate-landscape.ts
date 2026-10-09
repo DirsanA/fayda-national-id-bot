@@ -319,6 +319,29 @@ export async function renderFrontCardToCanvas(data: EthiopianIdData): Promise<HT
     }
   }
 
+  // 6. Dynamic Vertical Issue Date on Left Margin
+  ctx.save();
+  ctx.translate(38, 605);
+  ctx.rotate(-Math.PI / 2);
+  ctx.font = "bold 14px 'Noto Sans Ethiopic', sans-serif";
+  ctx.fillStyle = "#C68932";
+  ctx.fillText("የተሰጠበት ቀን: ", 0, 0);
+  const w1 = ctx.measureText("የተሰጠበት ቀን: ").width;
+
+  ctx.fillStyle = "#020617";
+  ctx.font = "bold 14px 'Inter', sans-serif";
+  ctx.fillText(data.dateOfIssueEth, w1, 0);
+  const w2 = w1 + ctx.measureText(data.dateOfIssueEth).width;
+
+  ctx.fillStyle = "#C68932";
+  ctx.font = "bold 14px 'Inter', sans-serif";
+  ctx.fillText("   Date of Issue: ", w2, 0);
+  const w3 = w2 + ctx.measureText("   Date of Issue: ").width;
+
+  ctx.fillStyle = "#020617";
+  ctx.fillText(formatGregorianDate(data.dateOfIssueGreg), w3, 0);
+  ctx.restore();
+
   return canvas;
 }
 

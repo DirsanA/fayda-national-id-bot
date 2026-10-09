@@ -66,6 +66,28 @@ function convertRawImageToDataUrl(img: { width: number; height: number; data: Ui
   }
 }
 
+export function convertGregorianToEthiopian(date: Date = new Date()): { year: number; month: number; day: number; formatted: string } {
+  const gYear = date.getFullYear();
+  const gMonth = date.getMonth() + 1;
+  const gDay = date.getDate();
+
+  const a = Math.floor((14 - gMonth) / 12);
+  const y = gYear + 4800 - a;
+  const m = gMonth + 12 * a - 3;
+  const jdn = gDay + Math.floor((153 * m + 2) / 5) + 365 * y + Math.floor(y / 4) - Math.floor(y / 100) + Math.floor(y / 400) - 32045;
+
+  const ethJdnOffset = 1723856;
+  const r = (jdn - ethJdnOffset) % 1461;
+  const n = (r % 365) + 365 * Math.floor(r / 1460);
+  const ethYear = 4 * Math.floor((jdn - ethJdnOffset) / 1461) + Math.floor(r / 365) - Math.floor(r / 1460);
+  const ethMonth = Math.floor(n / 30) + 1;
+  const ethDay = (n % 30) + 1;
+
+  const mm = String(ethMonth).padStart(2, "0");
+  const dd = String(ethDay).padStart(2, "0");
+  return { year: ethYear, month: ethMonth, day: ethDay, formatted: `${ethYear}/${mm}/${dd}` };
+}
+
 export async function extractIdDataFromPdf(
   file: File,
   source: RenderedPdf
@@ -162,13 +184,28 @@ export async function extractIdDataFromPdf(
   const woredaItems = findItems(195, 360, 348, 372);
   const worAmh = woredaItems.find((i) => /[\u1200-\u137F]/.test(i.str))?.str;
   const worEng = woredaItems.find((i) => /^[A-Za-z\s]+$/.test(i.str))?.str;
-
   const phoneItem = findItems(50, 150, 380, 400)[0]?.str;
 
   const datesFound = extractedText.match(/\b(\d{2}\/\d{2}\/\d{4})\b/g) || [];
   const fanMatch = extractedText.match(/\b(\d{4}\s+\d{4}\s+\d{4}\s+\d{4})\b/);
   const finMatch = extractedText.match(/(?:FIN|UIN)[:\s]*([0-9\s]{10,15})/i);
   const snMatch = extractedText.match(/SN[:\s]*(\d{7,10})/i);
+
+  const issueMatch = extractedText.match(/(?:Issue\s*Date|የተሰጠበት\s*ቀን)[:\s]*([0-9\/\-A-Za-z]+)/i);
+  const expiryMatch = extractedText.match(/(?:Expiry\s*Date|የሚያበቃበት\s*ቀን)[:\s]*([0-9\/\-A-Za-z]+)/i);
+
+  // Dynamic Issue and Expiry dates (8-year Fayda validity)
+  const now = new Date();
+  const ethNow = convertGregorianToEthiopian(now);
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const nowGregFormatted = `${now.getFullYear()}/${MONTHS[now.getMonth()]}/${String(now.getDate()).padStart(2, "0")}`;
+
+  const expGregYear = now.getFullYear() + 8;
+  const expDay = Math.max(1, now.getDate() - 2);
+  const expGregFormatted = `${expGregYear}/${MONTHS[now.getMonth()]}/${String(expDay).padStart(2, "0")}`;
+  const expEthYear = ethNow.year + 8;
+  const expEthDay = Math.max(1, ethNow.day - 2);
+  const expEthFormatted = `${expEthYear}/${String(ethNow.month).padStart(2, "0")}/${String(expEthDay).padStart(2, "0")}`;
 
   const data: EthiopianIdData = {
     fullNameAmharic: amharicName || "ዮሰፍ ጊርማ ቱፋ",
@@ -177,10 +214,10 @@ export async function extractIdDataFromPdf(
     dateOfBirthGreg: datesFound[0] || "02/Jan/2002",
     sexAmharic: extractedText.includes("ወንድ") ? "ወንድ" : extractedText.includes("ሴት") ? "ሴት" : "ወንድ",
     sexEnglish: extractedText.includes("Female") ? "Female" : "Male",
-    dateOfExpiryEth: "2027/01/13",
-    dateOfExpiryGreg: "2034/Sep/23",
-    dateOfIssueEth: "2019/01/15",
-    dateOfIssueGreg: "2026/Sep/25",
+    dateOfExpiryEth: expiryMatch ? expiryMatch[1] : expEthFormatted,
+    dateOfExpiryGreg: expiryMatch ? expiryMatch[1] : expGregFormatted,
+    dateOfIssueEth: issueMatch ? issueMatch[1] : ethNow.formatted,
+    dateOfIssueGreg: issueMatch ? issueMatch[1] : nowGregFormatted,
     fanNumber: fanMatch ? fanMatch[1] : "8029 5016 4312 4539",
     finNumber: finMatch ? finMatch[1].replace(/\s+/g, "") : "214270390587",
     serialNumber: snMatch ? snMatch[1] : "65501482",
