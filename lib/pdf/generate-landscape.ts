@@ -249,7 +249,7 @@ export async function renderFrontCardToCanvas(data: EthiopianIdData): Promise<HT
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
 
-  // 1. Draw authentic high-resolution template background
+  // 1. Draw authentic high-resolution pristine blank template background
   try {
     const templateImg = await loadImage("/assets/card-front-template.png");
     ctx.drawImage(templateImg, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -257,88 +257,62 @@ export async function renderFrontCardToCanvas(data: EthiopianIdData): Promise<HT
     console.warn("Could not load front template:", err);
   }
 
-  // 2. Clear previous text values strip with authentic gradient patch
-  const textGrad = ctx.createLinearGradient(345, 0, 740, 0);
-  textGrad.addColorStop(0, "rgba(215, 245, 237, 0.98)");
-  textGrad.addColorStop(0.5, "rgba(240, 249, 236, 0.98)");
-  textGrad.addColorStop(1, "rgba(248, 245, 218, 0.98)");
-
-  ctx.fillStyle = textGrad;
-  // Clear Name strip
-  drawRoundedRect(ctx, 345, 172, 395, 68, 4);
-  ctx.fill();
-  // Clear DOB strip
-  drawRoundedRect(ctx, 345, 286, 395, 34, 4);
-  ctx.fill();
-  // Clear Sex strip
-  drawRoundedRect(ctx, 345, 366, 395, 34, 4);
-  ctx.fill();
-  // Clear Expiry strip
-  drawRoundedRect(ctx, 345, 446, 395, 34, 4);
-  ctx.fill();
-
-  // 3. Draw extracted demographic text
-  ctx.fillStyle = "#020617";
-  ctx.font = "bold 26px 'Noto Sans Ethiopic', sans-serif";
-  ctx.fillText(data.fullNameAmharic, 350, 194);
-  ctx.font = "bold 24px 'Inter', sans-serif";
-  ctx.fillText(data.fullNameEnglish, 350, 224);
-
-  const dobGregFormatted = formatGregorianDate(data.dateOfBirthGreg);
-  ctx.font = "bold 23px 'Inter', sans-serif";
-  ctx.fillText(`${data.dateOfBirthEth} | ${dobGregFormatted}`, 350, 308);
-
-  ctx.font = "bold 23px 'Noto Sans Ethiopic', 'Inter', sans-serif";
-  ctx.fillText(`${data.sexAmharic} | ${data.sexEnglish}`, 350, 388);
-
-  const expiryGregFormatted = formatGregorianDate(data.dateOfExpiryGreg);
-  ctx.font = "bold 23px 'Inter', sans-serif";
-  ctx.fillText(`${data.dateOfExpiryEth} | ${expiryGregFormatted}`, 350, 468);
-
-  // 4. Primary Portrait Photo
+  // 2. Primary Portrait Photo (fits photo slot perfectly: x: 73, y: 138, w: 302, h: 430)
   if (data.photoUrl) {
     try {
       const photoImg = await loadImage(data.photoUrl);
       ctx.save();
-      drawRoundedRect(ctx, 52, 142, 250, 325, 8);
+      drawRoundedRect(ctx, 73, 138, 302, 430, 10);
       ctx.clip();
-      ctx.drawImage(photoImg, 52, 142, 250, 325);
+      ctx.drawImage(photoImg, 73, 138, 302, 430);
       ctx.restore();
     } catch {
       // Photo error fallback
     }
   }
 
-  // 5. White Barcode Container with extracted FAN and Code128 bars
-  const barcodeBoxX = 410;
-  const barcodeBoxY = 502;
-  const barcodeBoxW = 320;
-  const barcodeBoxH = 92;
+  // 3. Extracted demographic text positioned with exact pixel accuracy
+  ctx.fillStyle = "#020617";
+  ctx.font = "bold 26px 'Noto Sans Ethiopic', sans-serif";
+  ctx.fillText(data.fullNameAmharic, 418, 207);
 
-  ctx.fillStyle = "#ffffff";
-  drawRoundedRect(ctx, barcodeBoxX, barcodeBoxY, barcodeBoxW, barcodeBoxH, 4);
-  ctx.fill();
-  ctx.strokeStyle = "#cbd5e1";
-  ctx.lineWidth = 1;
-  ctx.stroke();
+  ctx.font = "bold 24px 'Inter', sans-serif";
+  ctx.fillText(data.fullNameEnglish, 418, 250);
+
+  const dobGregFormatted = formatGregorianDate(data.dateOfBirthGreg);
+  ctx.font = "bold 23px 'Inter', sans-serif";
+  ctx.fillText(`${data.dateOfBirthEth} | ${dobGregFormatted}`, 418, 334);
+
+  ctx.font = "bold 23px 'Noto Sans Ethiopic', 'Inter', sans-serif";
+  ctx.fillText(`${data.sexAmharic} | ${data.sexEnglish}`, 418, 405);
+
+  const expiryGregFormatted = formatGregorianDate(data.dateOfExpiryGreg);
+  ctx.font = "bold 23px 'Inter', sans-serif";
+  ctx.fillText(`${data.dateOfExpiryEth} | ${expiryGregFormatted}`, 418, 468);
+
+  // 4. White Barcode Container with extracted FAN and Code128 bars
+  const barcodeBoxX = 456;
+  const barcodeBoxY = 496;
+  const barcodeBoxW = 328;
+  const barcodeBoxH = 96;
 
   ctx.fillStyle = "#020617";
-  ctx.font = "900 21px monospace";
+  ctx.font = "900 22px monospace";
   ctx.textAlign = "center";
-  ctx.fillText(data.fanNumber, barcodeBoxX + barcodeBoxW / 2, barcodeBoxY + 24);
+  ctx.fillText(data.fanNumber, barcodeBoxX + barcodeBoxW / 2, barcodeBoxY + 26);
   ctx.textAlign = "left";
 
-  drawCode128Barcode(ctx, data.fanNumber, barcodeBoxX + 10, barcodeBoxY + 34, barcodeBoxW - 20, 48);
+  drawCode128Barcode(ctx, data.fanNumber, barcodeBoxX + 10, barcodeBoxY + 34, barcodeBoxW - 20, 52);
 
-  // 6. Ghost Photo on bottom right
+  // 5. Ghost Photo on bottom right
   if (data.photoUrl) {
     try {
       const ghostImg = await loadImage(data.photoUrl);
       ctx.save();
       ctx.globalAlpha = 0.75;
-      drawRoundedRect(ctx, 845, 495, 82, 105, 4);
+      drawRoundedRect(ctx, 810, 450, 145, 155, 8);
       ctx.clip();
-      ctx.drawImage(ghostImg, 845, 495, 82, 105);
+      ctx.drawImage(ghostImg, 810, 450, 145, 155);
       ctx.restore();
     } catch {
       // Ghost fallback
@@ -357,7 +331,7 @@ export async function renderBackCardToCanvas(data: EthiopianIdData): Promise<HTM
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
 
-  // 1. Draw authentic high-resolution template background
+  // 1. Draw authentic high-resolution pristine blank template background
   try {
     const templateImg = await loadImage("/assets/card-back-template.png");
     ctx.drawImage(templateImg, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -365,64 +339,44 @@ export async function renderBackCardToCanvas(data: EthiopianIdData): Promise<HTM
     console.warn("Could not load back template:", err);
   }
 
-  // 2. Clear dynamic text strips with authentic gradient patch
-  const backGrad = ctx.createLinearGradient(40, 0, 430, 0);
-  backGrad.addColorStop(0, "rgba(215, 245, 237, 0.98)");
-  backGrad.addColorStop(1, "rgba(230, 250, 240, 0.98)");
-
-  ctx.fillStyle = backGrad;
-  // Clear Phone strip
-  drawRoundedRect(ctx, 40, 70, 390, 34, 4);
-  ctx.fill();
-  // Clear Nationality strip
-  drawRoundedRect(ctx, 40, 164, 390, 34, 4);
-  ctx.fill();
-  // Clear Address strip
-  drawRoundedRect(ctx, 40, 242, 390, 180, 4);
-  ctx.fill();
-
-  // 3. Draw extracted text
+  // 2. Draw extracted text on Left
   ctx.fillStyle = "#020617";
   ctx.font = "bold 25px 'Inter', sans-serif";
-  ctx.fillText(data.phoneNumber, 45, 92);
+  ctx.fillText(data.phoneNumber, 40, 110);
 
   ctx.font = "bold 23px 'Noto Sans Ethiopic', 'Inter', sans-serif";
-  ctx.fillText(`${data.nationalityAmharic} | ${data.nationalityEnglish}`, 45, 186);
+  ctx.fillText(`${data.nationalityAmharic} | ${data.nationalityEnglish}`, 40, 194);
 
   ctx.font = "bold 21px 'Noto Sans Ethiopic', sans-serif";
-  ctx.fillText(data.regionAmharic, 45, 264);
+  ctx.fillText(data.regionAmharic, 40, 258);
   ctx.font = "bold 21px 'Inter', sans-serif";
-  ctx.fillText(data.regionEnglish, 45, 292);
+  ctx.fillText(data.regionEnglish, 40, 293);
 
   ctx.font = "bold 21px 'Noto Sans Ethiopic', sans-serif";
-  ctx.fillText(data.subcityAmharic, 45, 324);
+  ctx.fillText(data.subcityAmharic, 40, 330);
   ctx.font = "bold 21px 'Inter', sans-serif";
-  ctx.fillText(data.subcityEnglish, 45, 352);
+  ctx.fillText(data.subcityEnglish, 40, 359);
 
   ctx.font = "bold 21px 'Noto Sans Ethiopic', sans-serif";
-  ctx.fillText(data.woredaAmharic, 45, 384);
+  ctx.fillText(data.woredaAmharic, 40, 395);
   ctx.font = "bold 21px 'Inter', sans-serif";
-  ctx.fillText(data.woredaEnglish, 45, 412);
+  ctx.fillText(data.woredaEnglish, 40, 430);
 
-  // 4. Clear & Draw FIN digits inside the FIN box
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(115, 460, 210, 36);
+  // 3. Draw FIN digits inside the bottom-left white FIN box
   ctx.fillStyle = "#020617";
   ctx.font = "900 22px 'Inter', monospace";
-  ctx.fillText(`FIN  ${data.finNumber}`, 120, 486);
+  ctx.fillText(`FIN  ${data.finNumber}`, 104, 546);
 
-  // 5. Clear & Draw SN inside the SN box
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(815, 574, 150, 32);
+  // 4. Draw SN inside the bottom-right white SN badge
   ctx.fillStyle = "#020617";
-  ctx.font = "900 18px 'Inter', monospace";
-  ctx.fillText(data.serialNumber || "65501482", 820, 596);
+  ctx.font = "900 19px 'Inter', monospace";
+  ctx.fillText(data.serialNumber || "65501482", 835, 597);
 
-  // 6. Draw QR code cleanly inside the white QR container
+  // 5. Draw QR code cleanly inside the white QR container (square 490x490)
   const qrSource = data.qrCodeUrl || "/assets/target-qr.png";
   try {
     const qrImg = await loadImage(qrSource);
-    ctx.drawImage(qrImg, 450, 32, 510, 500);
+    ctx.drawImage(qrImg, 462, 47, 490, 490);
   } catch {
     // QR fallback
   }

@@ -30,7 +30,7 @@ export function LandscapeCardFront({ data, className = "" }: LandscapeCardFrontP
 
       {/* 2. Extracted Portrait Photo */}
       {data.photoUrl && (
-        <div className="absolute left-[5.1%] top-[22.2%] w-[24.7%] h-[51%] rounded-lg overflow-hidden shadow-2xs border border-teal-800/15">
+        <div className="absolute left-[7.2%] top-[21.6%] w-[29.9%] h-[67.4%] rounded-lg overflow-hidden shadow-2xs border border-teal-800/15">
           <img
             src={data.photoUrl}
             alt={`Portrait of ${data.fullNameEnglish}`}
@@ -39,50 +39,44 @@ export function LandscapeCardFront({ data, className = "" }: LandscapeCardFrontP
         </div>
       )}
 
-      {/* 3. Dynamic Text Overlays with subtle clean backdrop */}
-      <div className="absolute left-[34.6%] top-[27%] w-[39%] flex flex-col space-y-[0.7%]">
-        <div className="bg-[#D8F8F0]/95 px-1 py-0.5 rounded leading-tight">
-          <p className="text-[12.5px] sm:text-[14px] font-extrabold text-slate-950 tracking-tight">
+      {/* 3. Dynamic Text Overlays directly on pristine background */}
+      <div className="absolute left-[41.3%] top-[28.0%] w-[38%] flex flex-col space-y-[2.2%] leading-tight pointer-events-none">
+        <div>
+          <p className="text-[12.5px] sm:text-[14px] font-extrabold text-slate-950 tracking-tight leading-tight">
             {data.fullNameAmharic}
           </p>
-          <p className="text-[11.5px] sm:text-[13px] font-bold text-slate-900 tracking-tight">
+          <p className="text-[11.5px] sm:text-[13px] font-bold text-slate-900 tracking-tight leading-tight">
             {data.fullNameEnglish}
           </p>
         </div>
 
-        <div className="pt-[1.8%]">
-          <div className="bg-[#D8F8F0]/95 px-1 py-0.5 rounded leading-tight">
-            <p className="text-[11px] sm:text-[12.5px] font-bold text-slate-900">
-              {data.dateOfBirthEth} <span className="font-normal text-slate-400">|</span> {dobGreg}
-            </p>
-          </div>
+        <div className="pt-[4.5%]">
+          <p className="text-[11px] sm:text-[12.5px] font-bold text-slate-900 leading-tight">
+            {data.dateOfBirthEth} <span className="font-normal text-slate-400">|</span> {dobGreg}
+          </p>
         </div>
 
-        <div className="pt-[1.8%]">
-          <div className="bg-[#D8F8F0]/95 px-1 py-0.5 rounded leading-tight">
-            <p className="text-[11px] sm:text-[12.5px] font-bold text-slate-900">
-              {data.sexAmharic} <span className="font-normal text-slate-400">|</span> {data.sexEnglish}
-            </p>
-          </div>
+        <div className="pt-[4.0%]">
+          <p className="text-[11px] sm:text-[12.5px] font-bold text-slate-900 leading-tight">
+            {data.sexAmharic} <span className="font-normal text-slate-400">|</span> {data.sexEnglish}
+          </p>
         </div>
 
-        <div className="pt-[1.8%]">
-          <div className="bg-[#D8F8F0]/95 px-1 py-0.5 rounded leading-tight">
-            <p className="text-[11px] sm:text-[12.5px] font-bold text-slate-900">
-              {data.dateOfExpiryEth} <span className="font-normal text-slate-400">|</span> {expiryGreg}
-            </p>
-          </div>
+        <div className="pt-[3.5%]">
+          <p className="text-[11px] sm:text-[12.5px] font-bold text-slate-900 leading-tight">
+            {data.dateOfExpiryEth} <span className="font-normal text-slate-400">|</span> {expiryGreg}
+          </p>
         </div>
       </div>
 
-      {/* 4. Extracted Barcode & FAN Number */}
-      <div className="absolute left-[40.5%] bottom-[5.8%] w-[31.6%] h-[14.8%]">
+      {/* 4. Extracted Barcode & FAN Number inside white container */}
+      <div className="absolute left-[45.1%] top-[77.7%] w-[32.4%] h-[15.0%]">
         <BarcodeDisplay fanNumber={data.fanNumber} className="w-full h-full" />
       </div>
 
       {/* 5. Extracted Ghost Photo */}
       {data.photoUrl && (
-        <div className="absolute right-[8.4%] bottom-[7.5%] w-[8.1%] h-[16.5%] rounded overflow-hidden opacity-75 shadow-2xs">
+        <div className="absolute left-[80.1%] top-[70.5%] w-[14.3%] h-[24.3%] rounded overflow-hidden opacity-75 shadow-2xs pointer-events-none">
           <img src={data.photoUrl} alt="Ghost portrait" className="w-full h-full object-cover" />
         </div>
       )}
