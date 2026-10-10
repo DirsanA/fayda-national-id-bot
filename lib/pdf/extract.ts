@@ -796,3 +796,44 @@ export async function extractIdDataFromPdf(
 
   return data;
 }
+
+export function mapFaydaJsonResponseToIdData(apiData: Record<string, any>): EthiopianIdData {
+  const d = apiData || {};
+
+  // Formatter for FAN number (groups of 4 digits)
+  const rawFan = (d.fanNumber || "").replace(/\s+/g, "");
+  const formattedFan = rawFan.replace(/(\d{4})(?=\d)/g, "$1 ").trim() || "8029 5016 4312 4539";
+
+  // Formatter for FIN number (unspaced)
+  const rawFin = (d.fin || "").replace(/\s+/g, "");
+  const formattedFin = rawFin || "214270390587";
+
+  return {
+    fullNameAmharic: d.name?.amharic || "ዮሰፍ ጊርማ ቱፋ",
+    fullNameEnglish: d.name?.english || "Yosef Girma Tufa",
+    dateOfBirthEth: d.dateOfBirth?.ethiopian || "02/04/1994",
+    dateOfBirthGreg: d.dateOfBirth?.gregorian || "1994-05-02",
+    sexAmharic: d.gender?.amharic || "ወንድ",
+    sexEnglish: d.gender?.english || "Male",
+    dateOfExpiryEth: d.expiryDate?.ethiopian || "2032/08/20",
+    dateOfExpiryGreg: d.expiryDate?.gregorian || "2032-10-10",
+    dateOfIssueEth: d.issueDate?.ethiopian || "2024/08/20",
+    dateOfIssueGreg: d.issueDate?.gregorian || "2024-10-10",
+    fanNumber: formattedFan,
+    finNumber: formattedFin,
+    serialNumber: d.serialNumber || d.sn || "65501482",
+    phoneNumber: d.phone || "0917521765",
+    nationalityAmharic: d.nationality?.amharic || "ኢትዮጵያዊ",
+    nationalityEnglish: d.nationality?.english || "Ethiopian",
+    regionAmharic: d.address?.region?.amharic || d.address?.city?.amharic || "ኦሮሚያ",
+    regionEnglish: d.address?.region?.english || d.address?.city?.english || "Oromia",
+    subcityAmharic: d.address?.subCity?.amharic || "አምቦ ከተማ አስተዳደር",
+    subcityEnglish: d.address?.subCity?.english || "Ambo City Administration",
+    woredaAmharic: d.address?.woreda?.amharic || "ያኢ ገዳ",
+    woredaEnglish: d.address?.woreda?.english || "Yahi Geda",
+    photoUrl: d.photo || "",
+    qrCodeUrl: d.qrCode || "",
+    barcodeUrl: undefined,
+  };
+}
+
