@@ -1,29 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { extractIdDataFromPdf, mapFaydaJsonResponseToIdData } from "@/lib/pdf/extract";
+import { mapFaydaJsonResponseToIdData } from "@/lib/fayda-mapper";
 import { createPrintReadyLandscapePdf } from "@/lib/pdf/generate-landscape";
-import { createRedactedSamplePdf } from "@/lib/pdf/sample";
-import { validateConfiguredTemplate } from "@/lib/pdf/validate-template";
-import type { RenderedPdf } from "@/types/print";
 import type { EthiopianIdData } from "@/types/id-card";
-import { PdfUploader } from "./PdfUploader";
-import { PdfViewer } from "./PdfViewer";
-import { LandscapeCardFront } from "./LandscapeCardFront";
-import { LandscapeCardBack } from "./LandscapeCardBack";
+
 import { PrintPreview } from "./PrintPreview";
 import { ValidationMessage } from "./ValidationMessage";
 import { FaydaApiForm } from "./FaydaApiForm";
 
-
 export function DocumentWorkflow() {
   const [mounted, setMounted] = useState(false);
-  const [activeTab, setActiveTab] = useState<"pdf" | "api">("pdf");
-  const [file, setFile] = useState<File>();
   const [idData, setIdData] = useState<EthiopianIdData>();
   const [processing, setProcessing] = useState(false);
   const [output, setOutput] = useState<Blob>();
   const [error, setError] = useState<string>();
+
 
   useEffect(() => {
     setMounted(true);
@@ -31,12 +23,12 @@ export function DocumentWorkflow() {
 
 
   const resetDocument = useCallback(() => {
-    setFile(undefined);
     setIdData(undefined);
     setOutput(undefined);
     setError(undefined);
     setProcessing(false);
   }, []);
+
 
   const handleApiSuccess = useCallback(async (jsonResponseData: Record<string, any>) => {
     setProcessing(true);
@@ -54,50 +46,6 @@ export function DocumentWorkflow() {
     }
   }, []);
 
-  const processTemplate = useCallback(async (currentFile: File, source: RenderedPdf) => {
-    setIdData(undefined);
-    setOutput(undefined);
-    setError(undefined);
-
-    const errors = validateConfiguredTemplate(source);
-    if (errors.length) {
-      setError(errors.join(" "));
-      return;
-    }
-
-    setProcessing(true);
-    try {
-      // 1. Extract structured data and high-res visual assets from PDF
-      const extracted = await extractIdDataFromPdf(currentFile, source);
-      setIdData(extracted);
-
-      // 2. Generate 300 DPI physical print-ready landscape ID-1 PDF (Front + Back)
-      const printPdf = await createPrintReadyLandscapePdf(extracted);
-      setOutput(printPdf);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not reconstruct the landscape card layout.");
-    } finally {
-      setProcessing(false);
-    }
-  }, []);
-
-  const selectFile = useCallback((next: File) => {
-    setFile(next);
-    setIdData(undefined);
-    setOutput(undefined);
-    setError(undefined);
-  }, []);
-
-  const loadSample = async () => selectFile(await createRedactedSamplePdf());
-
-  const handleRendered = useCallback(
-    (source: RenderedPdf) => {
-      if (file) {
-        void processTemplate(file, source);
-      }
-    },
-    [file, processTemplate]
-  );
 
   if (!mounted) {
     return (
