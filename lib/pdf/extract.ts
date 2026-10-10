@@ -797,6 +797,18 @@ export async function extractIdDataFromPdf(
   return data;
 }
 
+function formatImageDataUri(value: any, key: string): string {
+  if (!value || typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (/^data:image\/(png|jpeg|jpg|webp|gif);base64,/i.test(trimmed)) return trimmed;
+  const base64 = trimmed.replace(/^base64,/i, "").replace(/\s+/g, "");
+  if (base64.length < 32 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) return "";
+  let mime = /qr|code/i.test(key) ? "image/png" : "image/jpeg";
+  if (base64.startsWith("iVBORw0KGgo")) mime = "image/png";
+  else if (base64.startsWith("UklGR")) mime = "image/webp";
+  return `data:${mime};base64,${base64}`;
+}
+
 export function mapFaydaJsonResponseToIdData(apiData: Record<string, any>): EthiopianIdData {
   const d = apiData || {};
 
@@ -807,6 +819,9 @@ export function mapFaydaJsonResponseToIdData(apiData: Record<string, any>): Ethi
   // Formatter for FIN number (unspaced)
   const rawFin = (d.fin || "").replace(/\s+/g, "");
   const formattedFin = rawFin || "214270390587";
+
+  const photo = formatImageDataUri(d.photo, "photo");
+  const qrCode = formatImageDataUri(d.qrCode, "qrCode");
 
   return {
     fullNameAmharic: d.name?.amharic || "ዮሰፍ ጊርማ ቱፋ",
@@ -831,9 +846,10 @@ export function mapFaydaJsonResponseToIdData(apiData: Record<string, any>): Ethi
     subcityEnglish: d.address?.subCity?.english || "Ambo City Administration",
     woredaAmharic: d.address?.woreda?.amharic || "ያኢ ገዳ",
     woredaEnglish: d.address?.woreda?.english || "Yahi Geda",
-    photoUrl: d.photo || "",
-    qrCodeUrl: d.qrCode || "",
+    photoUrl: photo || "",
+    qrCodeUrl: qrCode || "",
     barcodeUrl: undefined,
   };
 }
+
 

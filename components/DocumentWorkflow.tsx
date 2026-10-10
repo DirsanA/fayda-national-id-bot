@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { extractIdDataFromPdf, mapFaydaJsonResponseToIdData } from "@/lib/pdf/extract";
 import { createPrintReadyLandscapePdf } from "@/lib/pdf/generate-landscape";
 import { createRedactedSamplePdf } from "@/lib/pdf/sample";
@@ -9,17 +9,26 @@ import type { RenderedPdf } from "@/types/print";
 import type { EthiopianIdData } from "@/types/id-card";
 import { PdfUploader } from "./PdfUploader";
 import { PdfViewer } from "./PdfViewer";
+import { LandscapeCardFront } from "./LandscapeCardFront";
+import { LandscapeCardBack } from "./LandscapeCardBack";
 import { PrintPreview } from "./PrintPreview";
 import { ValidationMessage } from "./ValidationMessage";
 import { FaydaApiForm } from "./FaydaApiForm";
 
+
 export function DocumentWorkflow() {
+  const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<"pdf" | "api">("pdf");
   const [file, setFile] = useState<File>();
   const [idData, setIdData] = useState<EthiopianIdData>();
   const [processing, setProcessing] = useState(false);
   const [output, setOutput] = useState<Blob>();
   const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
 
   const resetDocument = useCallback(() => {
     setFile(undefined);
@@ -90,74 +99,25 @@ export function DocumentWorkflow() {
     [file, processTemplate]
   );
 
+  if (!mounted) {
+    return (
+      <div className="flex min-h-[320px] items-center justify-center rounded-3xl border border-slate-800 bg-slate-900/40 p-8">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-teal-500/30 border-t-teal-400" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      {/* Workflow Tabs */}
-      <div className="flex border-b border-slate-800/80 bg-slate-900/40 p-1 rounded-xl">
-        <button
-          type="button"
-          onClick={() => {
-            setActiveTab("pdf");
-            resetDocument();
-          }}
-          className={`flex-1 flex items-center justify-center gap-2 rounded-lg py-2.5 text-xs sm:text-sm font-semibold transition-all ${
-            activeTab === "pdf"
-              ? "bg-slate-800 text-teal-400 shadow-xs border border-slate-700/60"
-              : "text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          <span className="h-2 w-2 rounded-full bg-teal-400" />
-          PDF Upload &amp; Extraction
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setActiveTab("api");
-            resetDocument();
-          }}
-          className={`flex-1 flex items-center justify-center gap-2 rounded-lg py-2.5 text-xs sm:text-sm font-semibold transition-all ${
-            activeTab === "api"
-              ? "bg-slate-800 text-teal-400 shadow-xs border border-slate-700/60"
-              : "text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          <span className="h-2 w-2 rounded-full bg-emerald-400" />
-          Fayda API Verification (JSON)
-        </button>
-      </div>
-
-      {activeTab === "api" ? (
-        <FaydaApiForm
-          onSuccess={(data) => void handleApiSuccess(data)}
-          onError={(msg) => setError(msg || undefined)}
-        />
-      ) : (
-        <>
-          <PdfUploader file={file} onReady={selectFile} onClear={resetDocument} />
-
-          {!file && (
-            <div className="flex justify-center pt-2">
-              <button
-                type="button"
-                onClick={() => void loadSample()}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/40 px-4 py-2 text-xs font-semibold text-slate-400 hover:border-slate-700 hover:bg-slate-800 hover:text-slate-200 transition-all shadow-xs"
-              >
-                <span>✨</span> Load sample test PDF template
-              </button>
-            </div>
-          )}
-
-          {file && <PdfViewer file={file} onRendered={handleRendered} />}
-        </>
-      )}
+      <FaydaApiForm
+        onSuccess={(data) => void handleApiSuccess(data)}
+        onError={(msg) => setError(msg || undefined)}
+      />
 
       {processing && (
         <div className="space-y-4 rounded-2xl border border-blue-500/30 bg-blue-950/20 p-5 backdrop-blur-xl">
           <ValidationMessage tone="info">
-            {activeTab === "api"
-              ? "Fetching Fayda identity data and constructing print-ready landscape cards..."
-              : "Source PDF verified. Extracting identity assets and reconstructing true landscape ID-1 cards..."}
+            Fetching Fayda identity data and constructing print-ready landscape cards...
           </ValidationMessage>
           <div className="relative h-24 w-full overflow-hidden rounded-xl bg-slate-900 border border-slate-800">
             <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-blue-500/20 to-transparent" />
@@ -177,4 +137,6 @@ export function DocumentWorkflow() {
     </div>
   );
 }
+
+
 

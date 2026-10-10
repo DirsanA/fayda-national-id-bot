@@ -34,9 +34,16 @@ export function FaydaApiForm({ onSuccess, onError }: FaydaApiFormProps) {
         body: JSON.stringify({ fanNumber: cleanedFan }),
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.session) {
-        throw new Error(data.message || "Failed to request OTP from Fayda API.");
+      let data: any = null;
+      const text = await res.text();
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(text || `Server returned error (${res.status}). Please check server logs.`);
+      }
+
+      if (!res.ok || !data?.session) {
+        throw new Error(data?.message || "Failed to request OTP from Fayda API.");
       }
 
       setSession(data.session);
@@ -72,9 +79,16 @@ export function FaydaApiForm({ onSuccess, onError }: FaydaApiFormProps) {
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success || !data.data) {
-        throw new Error(data.message || "Verification failed. Please check the OTP.");
+      let data: any = null;
+      const text = await res.text();
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(text || `Server returned error (${res.status}). Please check server logs.`);
+      }
+
+      if (!res.ok || !data?.success || !data?.data) {
+        throw new Error(data?.message || "Verification failed. Please check the OTP.");
       }
 
       if (typeof data.remainingPoints === "number") {
@@ -82,6 +96,7 @@ export function FaydaApiForm({ onSuccess, onError }: FaydaApiFormProps) {
       }
 
       onSuccess(data.data);
+
     } catch (err: unknown) {
       onError(err instanceof Error ? err.message : "Error verifying OTP.");
     } finally {
