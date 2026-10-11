@@ -33,7 +33,7 @@ export function PdfViewer({ file, onRendered }: PdfViewerProps) {
         setError(caught instanceof Error ? caught.message : "The PDF could not be rendered.");
       });
     return () => { live = false; };
-  }, [file, onRendered]);
+  }, [file]);
 
   if (state === "loading") return <ValidationMessage tone="info">Rendering source PDF at high resolution…</ValidationMessage>;
   if (state === "error") return <ValidationMessage tone="error">{error}</ValidationMessage>;
