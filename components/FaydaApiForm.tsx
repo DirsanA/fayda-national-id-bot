@@ -43,7 +43,13 @@ export function FaydaApiForm({ onSuccess, onError }: FaydaApiFormProps) {
       }
 
       if (!res.ok || !data?.session) {
-        throw new Error(data?.message || "Failed to request OTP from Fayda API.");
+        const errorDetail =
+          data?.message ||
+          data?.error ||
+          (res.status === 405
+            ? "HTTP 405 Method Not Allowed: POST method is required."
+            : `Failed to request OTP from Fayda API (Status: ${res.status}).`);
+        throw new Error(errorDetail);
       }
 
       setSession(data.session);

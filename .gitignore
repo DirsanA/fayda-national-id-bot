@@ -8,3 +8,4 @@ coverage/
 docs/
 *.tsbuildinfo
 *.traineddata
+.sessions/

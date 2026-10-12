@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: data?.message || `Fayda API error (status ${res.status})`,
+          message: data?.message || data?.error || `Fayda API error (status ${res.status})`,
         },
         { status: res.status }
       );
@@ -53,4 +53,20 @@ export async function POST(req: NextRequest) {
     const message = err instanceof Error ? err.message : "Internal server error";
     return NextResponse.json({ success: false, message }, { status: 500 });
   }
+}
+
+// Explicit GET handler returning a clear 405 Method Not Allowed message
+export async function GET() {
+  return NextResponse.json(
+    {
+      success: false,
+      message: "Method Not Allowed. /api/fayda/send-otp only accepts POST requests with a JSON body: { fanNumber: string }.",
+    },
+    {
+      status: 405,
+      headers: {
+        Allow: "POST",
+      },
+    }
+  );
 }
