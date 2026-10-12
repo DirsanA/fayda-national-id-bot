@@ -89,6 +89,28 @@ function drawCode128Barcode(
   });
 }
 
+// In-memory cache for static card template images to eliminate disk I/O on every render
+let cachedFrontTemplateImg: any = null;
+let cachedBackTemplateImg: any = null;
+
+async function getFrontTemplateImage(): Promise<any> {
+  if (cachedFrontTemplateImg) return cachedFrontTemplateImg;
+  const templatePath = path.join(process.cwd(), "public", "assets", "card-front-template.png");
+  if (fs.existsSync(templatePath)) {
+    cachedFrontTemplateImg = await loadImage(templatePath);
+  }
+  return cachedFrontTemplateImg;
+}
+
+async function getBackTemplateImage(): Promise<any> {
+  if (cachedBackTemplateImg) return cachedBackTemplateImg;
+  const templatePath = path.join(process.cwd(), "public", "assets", "card-back-template.png");
+  if (fs.existsSync(templatePath)) {
+    cachedBackTemplateImg = await loadImage(templatePath);
+  }
+  return cachedBackTemplateImg;
+}
+
 async function loadServerImage(src: string): Promise<any> {
   if (!src) return null;
   try {
@@ -112,26 +134,59 @@ async function loadServerImage(src: string): Promise<any> {
   return null;
 }
 
-export async function renderFrontCardBuffer(data: EthiopianIdData): Promise<Buffer> {
+function convertServerImageToGrayscale(img: any): any {
+  const c = createCanvas(img.width, img.height);
+  const cCtx = c.getContext("2d");
+  cCtx.drawImage(img, 0, 0);
+  const imgData = cCtx.getImageData(0, 0, c.width, c.height);
+  const d = imgData.data;
+
+  // ITU-R BT.709 luminance weights for natural high-contrast B&W portrait
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i];
+    const g = d[i + 1];
+    const b = d[i + 2];
+    const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+    d[i] = gray;
+    d[i + 1] = gray;
+    d[i + 2] = gray;
+  }
+  cCtx.putImageData(imgData, 0, 0);
+  return c;
+}
+
+export type BotPhotoStyle = "bw" | "color";
+
+export async function renderFrontCardCanvas(
+  data: EthiopianIdData,
+  photoStyle: BotPhotoStyle = "bw"
+): Promise<any> {
   const canvas = createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
   const ctx = canvas.getContext("2d");
   ctx.imageSmoothingEnabled = true;
 
-  // 1. Draw front template
-  const templatePath = path.join(process.cwd(), "public", "assets", "card-front-template.png");
-  if (fs.existsSync(templatePath)) {
-    const templateImg = await loadImage(templatePath);
+  // 1. Draw front template (retrieved from memory cache)
+  const templateImg = await getFrontTemplateImage();
+  if (templateImg) {
     ctx.drawImage(templateImg, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }
 
-  // 2. Primary Portrait Photo
+  // 2. Primary Portrait Photo (decode base64 once and reuse for ghost photo)
+  let photoDrawable: any = null;
   if (data.photoUrl) {
-    const photoImg = await loadServerImage(data.photoUrl);
-    if (photoImg) {
+    const rawPhotoImg = await loadServerImage(data.photoUrl);
+    if (rawPhotoImg) {
+      photoDrawable =
+        photoStyle === "bw" ? convertServerImageToGrayscale(rawPhotoImg) : rawPhotoImg;
+      const photoW = 281;
+      const photoH = 400;
+      const photoX = 73 + Math.round((302 - photoW) / 2);
+      const photoY = 138 + Math.round((430 - photoH) / 2);
+
       ctx.save();
-      drawRoundedRect(ctx, 73, 138, 302, 430, 10);
+      drawRoundedRect(ctx, photoX, photoY, photoW, photoH, 10);
       ctx.clip();
-      ctx.drawImage(photoImg, 73, 138, 302, 430);
+      ctx.drawImage(photoDrawable, photoX, photoY, photoW, photoH);
       ctx.restore();
     }
   }
@@ -166,19 +221,16 @@ export async function renderFrontCardBuffer(data: EthiopianIdData): Promise<Buff
   ctx.fillText(data.fanNumber, barcodeBoxX + barcodeBoxW / 2, barcodeBoxY + 26);
   ctx.textAlign = "left";
 
-  drawCode128Barcode(ctx, data.fanNumber, barcodeBoxX + 10, barcodeBoxY + 34, barcodeBoxW - 20, 52);
+    drawCode128Barcode(ctx, data.fanNumber, barcodeBoxX + 10, barcodeBoxY + 34, barcodeBoxW - 20, 52);
 
-  // 5. Ghost photo
-  if (data.photoUrl) {
-    const ghostImg = await loadServerImage(data.photoUrl);
-    if (ghostImg) {
-      ctx.save();
-      ctx.globalAlpha = 0.75;
-      drawRoundedRect(ctx, 830, 460, 113, 134, 8);
-      ctx.clip();
-      ctx.drawImage(ghostImg, 830, 460, 113, 134);
-      ctx.restore();
-    }
+  // 5. Ghost photo (re-use already decoded portrait drawable)
+  if (photoDrawable) {
+    ctx.save();
+    ctx.globalAlpha = 0.75;
+    drawRoundedRect(ctx, 830, 460, 113, 134, 8);
+    ctx.clip();
+    ctx.drawImage(photoDrawable, 830, 460, 113, 134);
+    ctx.restore();
   }
 
   // 6. Vertical issue date on left margin
@@ -204,18 +256,25 @@ export async function renderFrontCardBuffer(data: EthiopianIdData): Promise<Buff
   ctx.fillText(formatGregorianDate(data.dateOfIssueGreg), w3, 0);
   ctx.restore();
 
+  return canvas;
+}
+
+export async function renderFrontCardBuffer(
+  data: EthiopianIdData,
+  photoStyle: BotPhotoStyle = "bw"
+): Promise<Buffer> {
+  const canvas = await renderFrontCardCanvas(data, photoStyle);
   return canvas.toBuffer("image/png");
 }
 
-export async function renderBackCardBuffer(data: EthiopianIdData): Promise<Buffer> {
+export async function renderBackCardCanvas(data: EthiopianIdData): Promise<any> {
   const canvas = createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
   const ctx = canvas.getContext("2d");
   ctx.imageSmoothingEnabled = true;
 
-  // 1. Draw back template
-  const templatePath = path.join(process.cwd(), "public", "assets", "card-back-template.png");
-  if (fs.existsSync(templatePath)) {
-    const templateImg = await loadImage(templatePath);
+  // 1. Draw back template (retrieved from memory cache)
+  const templateImg = await getBackTemplateImage();
+  if (templateImg) {
     ctx.drawImage(templateImg, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }
 
@@ -259,5 +318,36 @@ export async function renderBackCardBuffer(data: EthiopianIdData): Promise<Buffe
     ctx.drawImage(qrImg, 462, 47, 490, 490);
   }
 
+  return canvas;
+}
+
+export async function renderBackCardBuffer(data: EthiopianIdData): Promise<Buffer> {
+  const canvas = await renderBackCardCanvas(data);
   return canvas.toBuffer("image/png");
+}
+
+// Generate single horizontal combined card (Front Left, Back Right, 15px gap, Zero paper background)
+export async function renderCombinedCardBuffer(
+  data: EthiopianIdData,
+  photoStyle: BotPhotoStyle = "bw"
+): Promise<Buffer> {
+  const [frontCanvas, backCanvas] = await Promise.all([
+    renderFrontCardCanvas(data, photoStyle),
+    renderBackCardCanvas(data),
+  ]);
+
+  const GAP_PX = 15;
+  const combinedWidth = CANVAS_WIDTH * 2 + GAP_PX;
+  const combinedHeight = CANVAS_HEIGHT;
+
+  const combinedCanvas = createCanvas(combinedWidth, combinedHeight);
+  const ctx = combinedCanvas.getContext("2d");
+  ctx.imageSmoothingEnabled = true;
+
+  // Front card on the left (x=0, y=0)
+  ctx.drawImage(frontCanvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  // Back card on the right (x=CANVAS_WIDTH + GAP_PX, y=0)
+  ctx.drawImage(backCanvas, CANVAS_WIDTH + GAP_PX, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+  return combinedCanvas.toBuffer("image/png");
 }

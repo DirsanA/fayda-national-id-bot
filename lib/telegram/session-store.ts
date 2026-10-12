@@ -1,7 +1,15 @@
 import fs from "fs";
 import path from "path";
 
-export type SessionState = "NONE" | "AWAITING_FAN" | "AWAITING_OTP";
+export type SessionState =
+  | "IDLE"
+  | "WAITING_FOR_FAN"
+  | "REQUESTING_OTP"
+  | "WAITING_FOR_OTP"
+  | "VERIFYING_OTP"
+  | "GENERATING_CARD"
+  | "COMPLETED"
+  | "CANCELLED";
 
 export interface UserSession {
   userId: number;
@@ -13,6 +21,22 @@ export interface UserSession {
   updatedAt: number;
   requestCount: number;
   lastRequestTime: number;
+  activeRequestId?: string;
+}
+
+// In-memory mutex locks per user to prevent concurrent race conditions
+const userLocks = new Set<number>();
+
+export function acquireUserLock(userId: number): boolean {
+  if (userLocks.has(userId)) {
+    return false;
+  }
+  userLocks.add(userId);
+  return true;
+}
+
+export function releaseUserLock(userId: number) {
+  userLocks.delete(userId);
 }
 
 // TTL: Sessions expire after 10 minutes of inactivity
@@ -56,17 +80,37 @@ function loadSessions(): Map<number, UserSession> {
   return map;
 }
 
-function saveSessions(map: Map<number, UserSession>) {
-  try {
-    ensureStorageDir();
-    const now = Date.now();
-    const validSessions = Array.from(map.values()).filter(
-      (s) => now - s.updatedAt < SESSION_TTL_MS
-    );
-    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(validSessions, null, 2), "utf-8");
-  } catch (err) {
-    console.error("Failed to save sessions to file:", err);
-  }
+// Asynchronous debounced session persistence to keep Node event loop unblocked
+let saveTimeout: NodeJS.Timeout | null = null;
+let isSaving = false;
+
+function scheduleSaveSessions() {
+  if (saveTimeout) return;
+  saveTimeout = setTimeout(async () => {
+    saveTimeout = null;
+    if (isSaving) {
+      // Reschedule if another save is actively in flight
+      scheduleSaveSessions();
+      return;
+    }
+    isSaving = true;
+    try {
+      ensureStorageDir();
+      const now = Date.now();
+      const validSessions = Array.from(inMemorySessions.values()).filter(
+        (s) => now - s.updatedAt < SESSION_TTL_MS
+      );
+      await fs.promises.writeFile(
+        SESSIONS_FILE,
+        JSON.stringify(validSessions),
+        "utf-8"
+      );
+    } catch (err) {
+      console.error("Failed to save sessions to file:", err);
+    } finally {
+      isSaving = false;
+    }
+  }, 100);
 }
 
 let inMemorySessions = loadSessions();
@@ -79,13 +123,13 @@ export function getSession(userId: number, chatId: number): UserSession {
     session = {
       userId,
       chatId,
-      state: "NONE",
+      state: "IDLE",
       updatedAt: now,
       requestCount: 0,
       lastRequestTime: now,
     };
     inMemorySessions.set(userId, session);
-    saveSessions(inMemorySessions);
+    scheduleSaveSessions();
   }
 
   return session;
@@ -95,7 +139,7 @@ export function updateSession(userId: number, partial: Partial<UserSession>): Us
   const current = inMemorySessions.get(userId) || {
     userId,
     chatId: partial.chatId || userId,
-    state: "NONE" as SessionState,
+    state: "IDLE" as SessionState,
     updatedAt: Date.now(),
     requestCount: 0,
     lastRequestTime: Date.now(),
@@ -108,19 +152,20 @@ export function updateSession(userId: number, partial: Partial<UserSession>): Us
   };
 
   inMemorySessions.set(userId, updated);
-  saveSessions(inMemorySessions);
+  scheduleSaveSessions();
   return updated;
 }
 
 export function clearSessionData(userId: number) {
   const session = inMemorySessions.get(userId);
   if (session) {
-    session.state = "NONE";
+    session.state = "IDLE";
     delete session.fanNumber;
     delete session.faydaSession;
     delete session.phone;
+    delete session.activeRequestId;
     session.updatedAt = Date.now();
-    saveSessions(inMemorySessions);
+    scheduleSaveSessions();
   }
 }
 
@@ -136,6 +181,6 @@ export function checkRateLimit(userId: number): boolean {
     session.requestCount += 1;
   }
 
-  saveSessions(inMemorySessions);
+  // No need to persist file on pure rate limit increment unless updated
   return session.requestCount <= MAX_REQUESTS_PER_WINDOW;
 }

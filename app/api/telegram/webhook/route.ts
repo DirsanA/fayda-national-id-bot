@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleTelegramUpdate } from "@/lib/telegram/bot-service";
 
+const processedUpdates = new Set<number>();
+
 export async function POST(req: NextRequest) {
   try {
     // Optional webhook secret verification
@@ -21,23 +23,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: "Invalid JSON" }, { status: 400 });
     }
 
-    const updateId = update.update_id ?? "unknown";
+    const updateId = update.update_id;
+    if (typeof updateId === "number") {
+      if (processedUpdates.has(updateId)) {
+        // Already processing or processed this update: acknowledge immediately to Telegram
+        return NextResponse.json({ ok: true });
+      }
+      processedUpdates.add(updateId);
+      // Clean set if it grows over 5,000 entries
+      if (processedUpdates.size > 5000) {
+        processedUpdates.clear();
+      }
+    }
+
     const messageType = update.message
       ? "message"
       : update.callback_query
       ? "callback_query"
       : Object.keys(update).find((k) => k !== "update_id") || "other";
 
-    console.log(`[Telegram Webhook] Received update ID: ${updateId} (type: ${messageType})`);
+    console.log(`[Telegram Webhook] Received update ID: ${updateId ?? "unknown"} (type: ${messageType})`);
 
-    // Await update processing and capture any runtime errors safely
-    try {
-      await handleTelegramUpdate(update);
-      console.log(`[Telegram Webhook] Successfully processed update ID: ${updateId}`);
-    } catch (handlerErr: unknown) {
+    // Process update in background to guarantee instant <50ms 200 OK acknowledgment to Telegram
+    // This prevents Telegram webhook timeouts and duplicate webhook retries while preserving full isolation.
+    handleTelegramUpdate(update).catch((handlerErr: unknown) => {
       const msg = handlerErr instanceof Error ? handlerErr.message : String(handlerErr);
-      console.error(`[Telegram Webhook] Error processing update ID ${updateId}:`, msg);
-    }
+      console.error(`[Telegram Webhook] Background error processing update ID ${updateId}:`, msg);
+    });
 
     return NextResponse.json({ ok: true });
   } catch (error: unknown) {
