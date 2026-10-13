@@ -22,7 +22,10 @@ export async function getMongoClient(): Promise<MongoClient> {
   if (process.env.NODE_ENV === "development") {
     if (!global._mongoClientPromise) {
       client = new MongoClient(uri);
-      global._mongoClientPromise = client.connect();
+      global._mongoClientPromise = client.connect().catch((err) => {
+        global._mongoClientPromise = undefined;
+        throw err;
+      });
     }
     return global._mongoClientPromise;
   }
