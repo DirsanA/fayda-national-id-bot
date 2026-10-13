@@ -12,6 +12,11 @@ import {
   acquireUserLock,
   releaseUserLock,
 } from "@/lib/telegram/session-store";
+import {
+  findCustomerByTelegramId,
+  adjustCustomerBalance,
+  upsertCustomer,
+} from "@/lib/models/customer";
 
 const TELEGRAM_API_BASE = "https://api.telegram.org";
 const FAYDA_BASE_URL = "https://otp.affiliate.pro.et/api/v1";
@@ -24,7 +29,7 @@ function getBotToken(): string {
   return token;
 }
 
-function getFaydaApiKey(): string {
+function getDefaultFaydaApiKey(): string {
   const key = process.env.FAYDA_API_KEY || "";
   if (!key) {
     throw new Error("FAYDA_API_KEY is not configured in .env");
@@ -32,21 +37,102 @@ function getFaydaApiKey(): string {
   return key;
 }
 
+function getAdminTelegramChatId(): string | number | null {
+  // Prefer ADMIN_TELEGRAM_ID, fallback to ADMIN_TELEGRAM_CHAT_ID, then default
+  const envVal = (process.env.ADMIN_TELEGRAM_ID || process.env.ADMIN_TELEGRAM_CHAT_ID || "").trim();
+  if (envVal) return envVal;
+  // Default admin ID as fallback
+  return "1765940918";
+}
+
+interface PaymentConfig {
+  bankName: string;
+  accountNumber: string;
+  accountHolder: string;
+  rateInfo: string;
+  adminUsername: string;
+  isConfigured: boolean;
+}
+
+function getPaymentConfig(): PaymentConfig {
+  const bankName = (process.env.PAYMENT_BANK_NAME || process.env.PAYMENT_PROVIDER || "").trim();
+  const accountNumber = (process.env.PAYMENT_ACCOUNT_NUMBER || process.env.PAYMENT_ACCOUNT_NO || "").trim();
+  const accountHolder = (process.env.PAYMENT_ACCOUNT_HOLDER || process.env.PAYMENT_ACCOUNT_NAME || "").trim();
+  const rateInfo = (process.env.PAYMENT_RATE_INFO || process.env.PAYMENT_RATE || "").trim();
+  const adminUsername = (process.env.ADMIN_TELEGRAM_USERNAME || "Dirsan_A").trim().replace(/^@/, "");
+
+  const isConfigured = Boolean(bankName && accountNumber && accountHolder);
+
+  return {
+    bankName,
+    accountNumber,
+    accountHolder,
+    rateInfo,
+    adminUsername,
+    isConfigured,
+  };
+}
+
+function buildRechargeInstructionsMessage(userId: number): string {
+  const config = getPaymentConfig();
+  const safeAdminUsername = config.adminUsername.replace(/[_*`\[\]]/g, "\\$&");
+
+  if (!config.isConfigured) {
+    return (
+      "💳 *Account Recharge & Top‑up Instructions*\n\n" +
+      "⚠️ *Payment account details are currently being configured by administration.*\n\n" +
+      "Please contact our administrator directly to receive official payment details and pricing:\n\n" +
+      `👤 *Admin Contact:* @${safeAdminUsername}\n` +
+      `🆔 *Your Telegram User ID:* \`${userId}\`\n\n` +
+      "📋 *How to complete your recharge:*\n" +
+      `1. Send a message to @${safeAdminUsername} for payment details.\n` +
+      "2. Transfer your desired amount.\n" +
+      "3. Send your payment screenshot or PDF receipt directly into this chat anytime (you can include your paid amount in the caption).\n\n" +
+      "⏳ Our team will manually verify the payment and credit your balance in the admin dashboard."
+    );
+  }
+
+  const safeBankName = config.bankName.replace(/[_*`\[\]]/g, "\\$&");
+  const safeAccountHolder = config.accountHolder.replace(/[_*`\[\]]/g, "\\$&");
+  const safeRateInfo = config.rateInfo ? config.rateInfo.replace(/[_*`\[\]]/g, "\\$&") : "";
+
+  let msg =
+    "💳 *Account Recharge & Verification Top‑up*\n\n" +
+    "To top up your Fayda ID verification balance, please transfer your payment using the details below:\n\n" +
+    `🏦 *Payment Provider / Bank:* ${safeBankName}\n` +
+    `👤 *Account Holder Name:* ${safeAccountHolder}\n` +
+    `🔢 *Account Number:* \`${config.accountNumber}\` _(tap to copy)_\n`;
+
+  if (safeRateInfo) {
+    msg += `💵 *Rate / Pricing:* ${safeRateInfo}\n`;
+  }
+
+  msg +=
+    "\n📋 *Next Steps:*\n" +
+    "1. Transfer the desired payment amount to the account above.\n" +
+    "2. Upload your payment screenshot or official PDF receipt directly into this chat anytime (you can mention the paid amount in the caption).\n" +
+    "3. Our administration will verify the receipt and manually update your verification balance in the system.\n\n" +
+    `💬 For any questions or instant confirmation, contact: @${safeAdminUsername}`;
+
+  return msg;
+}
+
 export const MAIN_MENU_KEYBOARD = {
   keyboard: [
-    [{ text: "🪪 Print ID Card" }, { text: "💰 Check Balance" }],
-    [{ text: "❓ Help" }, { text: "❌ Cancel" }],
+    [{ text: "🪪 Print ID Card" }, { text: "💰 Balance" }],
+    [{ text: "💳 Recharge (Upload Receipt)" }, { text: "❓ Help" }],
+    [{ text: "❌ Cancel" }],
   ],
   resize_keyboard: true,
   persistent: true,
 };
 
-// Check Fayda Balance
-async function fetchFaydaBalance(): Promise<any> {
-  const apiKey = getFaydaApiKey();
+// Check Fayda Provider Balance for a specific key
+async function fetchFaydaBalance(apiKey?: string): Promise<any> {
+  const key = apiKey || getDefaultFaydaApiKey();
   const res = await fetch(`${FAYDA_BASE_URL}/balance`, {
     method: "GET",
-    headers: { "x-api-key": apiKey },
+    headers: { "x-api-key": key },
   });
   return res.json().catch(() => null);
 }
@@ -193,8 +279,8 @@ export async function sendTelegramAction(
 }
 
 // Handle Fayda API: Send OTP
-async function requestFaydaOtp(fanNumber: string) {
-  const apiKey = getFaydaApiKey();
+async function requestFaydaOtp(fanNumber: string, customApiKey?: string) {
+  const apiKey = customApiKey || getDefaultFaydaApiKey();
   const cleanedFan = fanNumber.replace(/\s+/g, "");
 
   const res = await fetch(`${FAYDA_BASE_URL}/send-otp`, {
@@ -214,8 +300,8 @@ async function requestFaydaOtp(fanNumber: string) {
 }
 
 // Handle Fayda API: Verify OTP
-async function verifyFaydaOtp(otp: string, fanNumber: string, session: string) {
-  const apiKey = getFaydaApiKey();
+async function verifyFaydaOtp(otp: string, fanNumber: string, session: string, customApiKey?: string) {
+  const apiKey = customApiKey || getDefaultFaydaApiKey();
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 120000);
 
@@ -249,13 +335,147 @@ async function verifyFaydaOtp(otp: string, fanNumber: string, session: string) {
   }
 }
 
+// Helper to forward user payment screenshot to Admin Telegram
+async function forwardPaymentScreenshotToAdmin(
+  message: any,
+  senderUserId: number,
+  senderChatId: number
+) {
+  const adminChatId = getAdminTelegramChatId();
+  const username = message.from?.username ? `@${message.from.username}` : "None";
+  const firstName = message.from?.first_name || "";
+  const lastName = message.from?.last_name || "";
+  const fullName = `${firstName} ${lastName}`.trim() || "User";
+
+  const token = getBotToken();
+
+  // Escape Markdown characters in username/name to prevent formatting errors
+  const safeFullName = fullName.replace(/[_*`\[\]]/g, "\\$&");
+  const safeUsername = username.replace(/[_*`\[\]]/g, "\\$&");
+
+  // Extract customer caption or claimed amount if provided
+  const customerCaption = message.caption?.trim() || "";
+  const safeCustomerCaption = customerCaption
+    ? customerCaption.replace(/[_*`\[\]]/g, "\\$&")
+    : "";
+
+  // Caption with customer identification details and claimed amount
+  let adminCaption =
+    `🧾 *New Payment Receipt Received!*\n\n` +
+    `👤 *Sender:* ${safeFullName} (${safeUsername})\n` +
+    `🆔 *Telegram User ID:* \`${senderUserId}\`\n` +
+    `💬 *Chat ID:* \`${senderChatId}\`\n`;
+
+  if (safeCustomerCaption) {
+    adminCaption += `💵 *Claimed Amount / Note:* ${safeCustomerCaption}\n`;
+  } else {
+    adminCaption += `💵 *Claimed Amount / Note:* _None provided_\n`;
+  }
+
+  adminCaption +=
+    `⏰ *Time:* ${new Date().toLocaleString()}\n\n` +
+    `_Please review the payment receipt and manually update the customer's balance in the admin dashboard._`;
+
+  // Always respond to the customer first so they have immediate confirmation
+  await sendTelegramMessage(
+    senderChatId,
+    "✅ *Payment receipt received!*\n\n" +
+      "Your payment proof has been forwarded to our administration team for review.\n\n" +
+      "Your verification balance will be updated once manually confirmed. Thank you!",
+    { reply_markup: MAIN_MENU_KEYBOARD }
+  );
+
+  console.log(`[Screenshot Forward] Attempting forward to admin chat ${adminChatId} from user ${senderUserId}`);
+
+  if (adminChatId) {
+    try {
+      // 1. First attempt: Copy the media message directly with the formatted caption
+      const copyRes = await fetchWithRetry(
+        `${TELEGRAM_API_BASE}/bot${token}/copyMessage`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: Number(adminChatId),
+            from_chat_id: senderChatId,
+            message_id: message.message_id,
+            caption: adminCaption,
+            parse_mode: "Markdown",
+          }),
+        },
+        3,
+        30000
+      );
+      const copyData = await copyRes.json().catch(() => null);
+
+      if (copyData?.ok) {
+        console.log(`[Screenshot Forward] Successfully copied media and caption to admin chat ${adminChatId}`);
+      } else {
+        console.warn(`[Screenshot Forward] copyMessage with caption failed (${copyData?.description}), attempting copy without caption...`);
+
+        // 2. Fallback: Copy media without caption, then send caption as a separate message
+        const fallbackRes = await fetchWithRetry(
+          `${TELEGRAM_API_BASE}/bot${token}/copyMessage`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: Number(adminChatId),
+              from_chat_id: senderChatId,
+              message_id: message.message_id,
+            }),
+          },
+          3,
+          30000
+        );
+        const fallbackData = await fallbackRes.json().catch(() => null);
+
+        if (fallbackData?.ok) {
+          await sendTelegramMessage(
+            Number(adminChatId),
+            adminCaption,
+            { parse_mode: "Markdown" }
+          );
+          console.log(`[Screenshot Forward] Successfully copied media and sent separate caption to admin chat ${adminChatId}`);
+        } else {
+          console.error(`[Screenshot Forward] copyMessage completely failed:`, fallbackData);
+          // 3. Fallback: Notify admin via text message so the admin knows a payment was submitted
+          await sendTelegramMessage(
+            Number(adminChatId),
+            `⚠️ *New Payment Receipt Notice*\n\nUser *${safeFullName}* (${safeUsername}) with ID \`${senderUserId}\` sent a payment screenshot/PDF, but forwarding the media file failed (${fallbackData?.description || "unknown error"}).\nClaimed note: ${safeCustomerCaption || "None"}\nPlease check the bot conversation directly.`
+          );
+        }
+      }
+    } catch (err) {
+      console.error("[Screenshot Forward Error]:", err);
+    }
+  } else {
+    console.warn(`[Screenshot Forward] ADMIN_TELEGRAM_ID is not configured in environment.`);
+  }
+}
+
 // Main Telegram Update Handler
 export async function handleTelegramUpdate(update: any) {
   const message = update?.message || update?.edited_message;
-  if (!message || !message.text) return;
+  if (!message) return;
 
   const chatId = message.chat.id;
   const userId = message.from?.id || chatId;
+
+  // Check if message contains a payment screenshot or PDF receipt (photo or image/pdf document)
+  const isReceiptAttachment =
+    (message.photo && message.photo.length > 0) ||
+    (message.document &&
+      (message.document.mime_type?.startsWith("image/") ||
+        message.document.mime_type === "application/pdf" ||
+        message.document.file_name?.match(/\.(png|jpe?g|webp|pdf)$/i)));
+
+  if (isReceiptAttachment) {
+    await forwardPaymentScreenshotToAdmin(message, userId, chatId);
+    return;
+  }
+
+  if (!message.text) return;
   const text = message.text.trim();
 
   // Basic abuse / rate limiting protection
@@ -279,40 +499,90 @@ export async function handleTelegramUpdate(update: any) {
     return;
   }
 
+  // Handle Global Recharge Command anytime (works from any screen/session state)
+  const isRechargeCommand =
+    text === "💳 Recharge (Upload Receipt)" ||
+    text === "💳 Recharge" ||
+    text.toLowerCase() === "/recharge" ||
+    text.toLowerCase() === "/topup" ||
+    text.toLowerCase().includes("recharge");
+
+  if (isRechargeCommand) {
+    clearSessionData(userId);
+    releaseUserLock(userId);
+    const rechargeMsg = buildRechargeInstructionsMessage(userId);
+    await sendTelegramMessage(chatId, rechargeMsg, {
+      reply_markup: MAIN_MENU_KEYBOARD,
+    });
+    return;
+  }
+
   // Handle Help Command
   if (text === "/help" || text === "❓ Help") {
     await sendTelegramMessage(
       chatId,
       "ℹ️ *Menu & Commands:*\n\n" +
         "• *🪪 Print ID Card* (`/start`) - Verify FAN and generate print-ready ID cards\n" +
-        "• *💰 Check Balance* (`/balance`) - View remaining Fayda API verification points\n" +
+        "• *💰 Balance* (`/balance`) - View your remaining verification count\n" +
+        "• *💳 Recharge (Upload Receipt)* - Instructions to top up your balance\n" +
         "• *❌ Cancel* (`/cancel`) - Cancel current active session\n" +
         "• *❓ Help* (`/help`) - View this help message\n\n" +
-        "You can tap the buttons at the bottom of your screen anytime!",
+        "💡 *How to Recharge:* Transfer your payment and send the payment screenshot or PDF receipt directly into this chat anytime.",
       { reply_markup: MAIN_MENU_KEYBOARD }
     );
     return;
   }
 
   // Handle Balance Command
-  if (text === "/balance" || text === "💰 Check Balance") {
+  if (text === "/balance" || text === "💰 Balance" || text === "💰 Check Balance") {
     await sendTelegramAction(chatId, "typing");
     try {
-      const balanceData = await fetchFaydaBalance();
-      const points =
-        balanceData?.remainingPoints ??
-        balanceData?.balance ??
-        balanceData?.points ??
-        "N/A";
-      await sendTelegramMessage(
-        chatId,
-        `💰 *Fayda API Balance:*\n\nYour current account balance is: *${points}* points.`,
-        { reply_markup: MAIN_MENU_KEYBOARD }
-      );
+      // 1. Look up customer in MongoDB
+      const customer = await findCustomerByTelegramId(userId).catch(() => null);
+
+      if (!customer) {
+        // Customer is not registered
+        await sendTelegramMessage(
+          chatId,
+          "ℹ️ *Access Unavailable*\n\n" +
+            "Your Telegram account (ID: `" +
+            userId +
+            "`) is not yet registered for verification access.\n\n" +
+            "💳 *To activate or top up:*\n" +
+            "Send your payment receipt screenshot directly to this bot, or contact @Dirsan_A.",
+          { reply_markup: MAIN_MENU_KEYBOARD }
+        );
+        return;
+      }
+
+      // Customer is registered: display their available verification count
+      let balanceMsg =
+        `💰 *Your Balance*\n\n` +
+        `Available verifications: *${customer.balance || 0}*`;
+
+      // If customer has a dedicated Fayda API key registered, also display their provider balance
+      if (customer.faydaApiKey) {
+        const providerData = await fetchFaydaBalance(customer.faydaApiKey).catch(() => null);
+        const providerPoints =
+          providerData?.remainingPoints ??
+          providerData?.balance ??
+          providerData?.points;
+        if (providerPoints !== undefined) {
+          balanceMsg += `\n🔌 API Provider limit: *${providerPoints}* points`;
+        }
+      }
+
+      balanceMsg +=
+        `\n\n💳 *Need more verifications?*\n` +
+        `Tap *💳 Recharge (Upload Receipt)* or send your payment screenshot directly here anytime!`;
+
+      await sendTelegramMessage(chatId, balanceMsg, {
+        reply_markup: MAIN_MENU_KEYBOARD,
+      });
     } catch {
       await sendTelegramMessage(
         chatId,
-        "⚠️ Unable to retrieve balance right now. Please check your Fayda API configuration.",
+        "⚠️ Unable to retrieve your balance at this moment. Please try again shortly.",
         { reply_markup: MAIN_MENU_KEYBOARD }
       );
     }
@@ -328,22 +598,24 @@ export async function handleTelegramUpdate(update: any) {
 
   try {
     const session = getSession(userId, chatId);
-    const isStartCmd = text === "/start" || text === "/restart" || text === "🪪 Print ID Card";
+    // Handle /start or /restart command: send welcome and menu
+    if (text === "/start" || text === "/restart") {
+      clearSessionData(userId);
+      await sendTelegramMessage(
+        chatId,
+        "👋 *Welcome to Fayda Bot!*\n\nSelect an option from the menu below to begin.",
+        { reply_markup: MAIN_MENU_KEYBOARD }
+      );
+      return;
+    }
 
-    // 1. Handle "Print ID Card" / /start safely & idempotently
-    if (isStartCmd) {
-      if (session.state === "WAITING_FOR_FAN") {
-        // User already in FAN entry state: do not resend identical prompt
-        console.log(`[Bot] User ${userId} tapped Print ID Card while already in WAITING_FOR_FAN. Ignored.`);
-        return;
-      }
-
+    // Handle "Print ID Card" command
+    if (text === "🪪 Print ID Card") {
       if (
         session.state === "REQUESTING_OTP" ||
         session.state === "VERIFYING_OTP" ||
         session.state === "GENERATING_CARD"
       ) {
-        // Operation is currently running: never cancel or restart
         await sendTelegramMessage(
           chatId,
           "⏳ Your request is already being processed. Please wait..."
@@ -352,7 +624,6 @@ export async function handleTelegramUpdate(update: any) {
       }
 
       if (session.state === "WAITING_FOR_OTP") {
-        // Inform user they are waiting for OTP, provide clean guidance
         await sendTelegramMessage(
           chatId,
           "📲 An OTP has already been sent to your phone. Please reply with the *6-digit OTP code*, or tap *❌ Cancel* to start over.",
@@ -361,10 +632,8 @@ export async function handleTelegramUpdate(update: any) {
         return;
       }
 
-      // Clean start transition to WAITING_FOR_FAN
       clearSessionData(userId);
       updateSession(userId, { state: "WAITING_FOR_FAN", chatId });
-
       await sendTelegramMessage(
         chatId,
         "🪪 *Fayda National ID Verification*\n\nPlease enter your *16-digit Fayda FAN number* (e.g. `4952 8025 7094 3927` or without spaces):",
@@ -386,6 +655,17 @@ export async function handleTelegramUpdate(update: any) {
           return;
         }
 
+        // 1. Authorize customer verification balance & lookup customer API credential
+        const customer = await findCustomerByTelegramId(userId).catch(() => null);
+        if (customer && typeof customer.balance === "number" && customer.balance <= 0) {
+          await sendTelegramMessage(
+            chatId,
+            `⚠️ *Insufficient Verification Balance*\n\nYour available verification balance is *0*.\n\nPlease top up by sending your payment screenshot to this bot or contact @Dirsan_A.`,
+            { reply_markup: MAIN_MENU_KEYBOARD }
+          );
+          return;
+        }
+
         // Lock state to REQUESTING_OTP
         const reqId = `${Date.now()}-${Math.random()}`;
         updateSession(userId, { state: "REQUESTING_OTP", activeRequestId: reqId });
@@ -394,7 +674,9 @@ export async function handleTelegramUpdate(update: any) {
         await sendTelegramMessage(chatId, "⏳ Requesting OTP from Fayda system...");
 
         try {
-          const otpResponse = await requestFaydaOtp(cleanFan);
+          // Use customer's individual API key if registered, otherwise fall back to server default
+          const customerApiKey = customer?.faydaApiKey || undefined;
+          const otpResponse = await requestFaydaOtp(cleanFan, customerApiKey);
 
           // Verify request is still active
           const current = getSession(userId, chatId);
@@ -473,10 +755,15 @@ export async function handleTelegramUpdate(update: any) {
 
         try {
           console.log(`[Bot] Verifying OTP for user ${userId}...`);
+          // Check for customer's individual API key if configured
+          const customerRecord = await findCustomerByTelegramId(userId).catch(() => null);
+          const customerApiKey = customerRecord?.faydaApiKey || undefined;
+
           const verifyResponse = await verifyFaydaOtp(
             cleanOtp,
             session.fanNumber,
-            session.faydaSession
+            session.faydaSession,
+            customerApiKey
           );
 
           // Verify request is still active
@@ -518,6 +805,13 @@ export async function handleTelegramUpdate(update: any) {
           console.log(`[Bot] Document sent result:`, docRes?.ok ? "OK" : JSON.stringify(docRes));
 
           clearInterval(actionTimer);
+
+          // Deduct 1 verification count from registered customer balance upon successful completion
+          if (customerRecord && typeof customerRecord.balance === "number" && customerRecord.balance > 0) {
+            await adjustCustomerBalance(userId, -1).catch((err) =>
+              console.error("[Customer Balance Deduct Error]:", err)
+            );
+          }
 
           // Clean session state for user so they can start fresh anytime
           clearSessionData(userId);
