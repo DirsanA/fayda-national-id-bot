@@ -117,6 +117,57 @@ function buildRechargeInstructionsMessage(userId: number): string {
   return msg;
 }
 
+function buildInsufficientBalanceMessage(userId: number): string {
+  const config = getPaymentConfig();
+  const safeAdminUsername = config.adminUsername.replace(/[_*`\[\]]/g, "\\$&");
+
+  let msg =
+    "⚠️ *Insufficient Balance*\n\n" +
+    "Your verification balance is insufficient to print your ID card.\n\n" +
+    "💳 *Please recharge your account to continue.*\n\n" +
+    "Follow the payment instructions below and upload your payment receipt directly into this chat. Your payment will be reviewed manually.\n\n";
+
+  if (!config.isConfigured) {
+    const missingFields: string[] = [];
+    if (!config.bankName) missingFields.push("Bank / Provider Name");
+    if (!config.accountNumber) missingFields.push("Account Number");
+    if (!config.accountHolder) missingFields.push("Account Holder Name");
+
+    msg +=
+      "⚠️ *Payment account details are currently not fully configured by administration.*\n" +
+      `_(Missing configuration: ${missingFields.join(", ")})_\n\n` +
+      "Please contact our administrator directly to receive official payment details and pricing:\n\n" +
+      `👤 *Admin Contact:* @${safeAdminUsername}\n` +
+      `🆔 *Your Telegram User ID:* \`${userId}\`\n\n` +
+      "📋 *How to recharge:*\n" +
+      `1. Send a message to @${safeAdminUsername} for payment details.\n` +
+      "2. Transfer your desired amount.\n" +
+      "3. Send your payment screenshot or PDF receipt directly into this chat anytime.";
+  } else {
+    const safeBankName = config.bankName.replace(/[_*`\[\]]/g, "\\$&");
+    const safeAccountHolder = config.accountHolder.replace(/[_*`\[\]]/g, "\\$&");
+    const safeRateInfo = config.rateInfo ? config.rateInfo.replace(/[_*`\[\]]/g, "\\$&") : "";
+
+    msg +=
+      `🏦 *Payment Provider / Bank:* ${safeBankName}\n` +
+      `👤 *Account Holder Name:* ${safeAccountHolder}\n` +
+      `🔢 *Account Number:* \`${config.accountNumber}\` _(tap to copy)_\n`;
+
+    if (safeRateInfo) {
+      msg += `💵 *Rate / Pricing:* ${safeRateInfo}\n`;
+    }
+
+    msg +=
+      "\n📋 *Next Steps:*\n" +
+      "1. Transfer your desired payment amount to the account above.\n" +
+      "2. Send your payment screenshot or official PDF receipt directly into this chat anytime (you can include your paid amount in the caption).\n" +
+      "3. Our administration will review your receipt and credit your balance manually.\n\n" +
+      `💬 For questions or fast assistance: @${safeAdminUsername}`;
+  }
+
+  return msg;
+}
+
 export const MAIN_MENU_KEYBOARD = {
   keyboard: [
     [{ text: "🪪 Print ID Card" }, { text: "💰 Balance" }],
@@ -128,15 +179,33 @@ export const MAIN_MENU_KEYBOARD = {
 };
 
 // Check Fayda Provider Balance strictly for a customer's registered key
-async function fetchFaydaBalance(apiKey: string): Promise<any> {
+async function fetchFaydaBalance(apiKey: string, timeoutMs = 10000): Promise<any> {
   if (!apiKey || typeof apiKey !== "string") {
     throw new Error("No Fayda API key registered for customer.");
   }
-  const res = await fetch(`${FAYDA_BASE_URL}/balance`, {
-    method: "GET",
-    headers: { "x-api-key": apiKey.trim() },
-  });
-  return res.json().catch(() => null);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(`${FAYDA_BASE_URL}/balance`, {
+      method: "GET",
+      headers: { "x-api-key": apiKey.trim() },
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(data?.message || `Provider balance request failed (HTTP ${res.status})`);
+    }
+    return data;
+  } catch (err: any) {
+    clearTimeout(timer);
+    if (err?.name === "AbortError") {
+      throw new Error("Provider balance request timed out. Please try again.");
+    }
+    throw err;
+  }
 }
 
 // Resilient fetch helper with timeout and retries for unreliable Telegram/ISP network connections
@@ -665,7 +734,7 @@ export async function handleTelegramUpdate(update: any) {
         clearSessionData(userId);
         await sendTelegramMessage(
           chatId,
-          `ℹ️ *Verification Access Unavailable*\n\nYour available verification balance is *0*.\n\n💳 *To get started:*\nTap *💳 Recharge (Upload Receipt)* below or contact @${adminUsername}.`,
+          buildInsufficientBalanceMessage(userId),
           { reply_markup: MAIN_MENU_KEYBOARD }
         );
         return;
@@ -674,16 +743,39 @@ export async function handleTelegramUpdate(update: any) {
       let availablePoints = typeof customer.balance === "number" ? customer.balance : 0;
       const effectiveKey = customer.faydaApiKey || process.env.FAYDA_API_KEY || "";
 
+      if (!effectiveKey) {
+        clearSessionData(userId);
+        await sendTelegramMessage(
+          chatId,
+          `⚠️ *API Configuration Missing*\n\nPlease contact @${adminUsername} to verify provider configuration.`,
+          { reply_markup: MAIN_MENU_KEYBOARD }
+        );
+        return;
+      }
+
       // Check live balance if customer has an individual key
       if (customer.faydaApiKey) {
         await sendTelegramAction(chatId, "typing");
-        const liveBal = await fetchFaydaBalance(customer.faydaApiKey).catch(() => null);
-        if (liveBal) {
-          const rawPts = liveBal.points ?? liveBal.remainingPoints ?? liveBal.balance ?? liveBal.credit;
-          if (rawPts !== undefined && rawPts !== null && !isNaN(Number(rawPts))) {
-            availablePoints = Number(rawPts);
-            await upsertCustomer(userId, { balance: availablePoints }).catch(() => {});
+        try {
+          const liveBal = await fetchFaydaBalance(customer.faydaApiKey);
+          if (liveBal) {
+            const rawPts = liveBal.points ?? liveBal.remainingPoints ?? liveBal.balance ?? liveBal.credit;
+            if (rawPts !== undefined && rawPts !== null && !isNaN(Number(rawPts))) {
+              availablePoints = Number(rawPts);
+              await upsertCustomer(userId, { balance: availablePoints }).catch(() => {});
+            } else {
+              throw new Error("Unable to parse points from provider response.");
+            }
           }
+        } catch (err: any) {
+          clearSessionData(userId);
+          const errMsg = err?.message || "Temporary connection issue with Fayda provider";
+          await sendTelegramMessage(
+            chatId,
+            `⚠️ *Temporary Service Issue*\n\nUnable to check your verification balance due to a provider API error:\n_${errMsg}_\n\n🔄 Please tap *🪪 Print ID Card* to try again.`,
+            { reply_markup: MAIN_MENU_KEYBOARD }
+          );
+          return;
         }
       }
 
@@ -691,17 +783,7 @@ export async function handleTelegramUpdate(update: any) {
         clearSessionData(userId);
         await sendTelegramMessage(
           chatId,
-          `⚠️ *Insufficient Verification Balance*\n\nYour available verification balance is *0*.\n\n💳 *To recharge:*\nTap *💳 Recharge (Upload Receipt)* below or send your payment screenshot directly into this chat anytime!`,
-          { reply_markup: MAIN_MENU_KEYBOARD }
-        );
-        return;
-      }
-
-      if (!effectiveKey) {
-        clearSessionData(userId);
-        await sendTelegramMessage(
-          chatId,
-          `⚠️ *API Configuration Missing*\n\nPlease contact @${adminUsername} to verify provider configuration.`,
+          buildInsufficientBalanceMessage(userId),
           { reply_markup: MAIN_MENU_KEYBOARD }
         );
         return;
@@ -738,24 +820,39 @@ export async function handleTelegramUpdate(update: any) {
           clearSessionData(userId);
           await sendTelegramMessage(
             chatId,
-            "ℹ️ *Access Unavailable*\n\nYour account is not registered with active Fayda API credentials.",
+            buildInsufficientBalanceMessage(userId),
             { reply_markup: MAIN_MENU_KEYBOARD }
           );
           return;
         }
 
-        const liveBal = await fetchFaydaBalance(customer.faydaApiKey).catch(() => null);
-        const rawPts = liveBal?.points ?? liveBal?.remainingPoints ?? liveBal?.balance ?? liveBal?.credit;
-        const pts = (rawPts !== undefined && rawPts !== null && !isNaN(Number(rawPts)))
-          ? Number(rawPts)
-          : (typeof customer.balance === "number" ? customer.balance : 0);
+        let pts = typeof customer.balance === "number" ? customer.balance : 0;
+        try {
+          const liveBal = await fetchFaydaBalance(customer.faydaApiKey);
+          const rawPts = liveBal?.points ?? liveBal?.remainingPoints ?? liveBal?.balance ?? liveBal?.credit;
+          if (rawPts !== undefined && rawPts !== null && !isNaN(Number(rawPts))) {
+            pts = Number(rawPts);
+            await upsertCustomer(userId, { balance: pts }).catch(() => {});
+          } else {
+            throw new Error("Unable to parse points from provider response.");
+          }
+        } catch (err: any) {
+          clearSessionData(userId);
+          const errMsg = err?.message || "Temporary connection issue with Fayda provider";
+          await sendTelegramMessage(
+            chatId,
+            `⚠️ *Temporary Service Issue*\n\nUnable to check your verification balance due to a provider API error:\n_${errMsg}_\n\n🔄 Please tap *🪪 Print ID Card* to try again.`,
+            { reply_markup: MAIN_MENU_KEYBOARD }
+          );
+          return;
+        }
 
         if (pts <= 0) {
           clearSessionData(userId);
           await upsertCustomer(userId, { balance: 0 }).catch(() => {});
           await sendTelegramMessage(
             chatId,
-            `⚠️ *Insufficient Verification Balance*\n\nYour available verification balance is *0*.\n\nPlease top up by sending your payment screenshot to this bot or contact @${adminUsername}.`,
+            buildInsufficientBalanceMessage(userId),
             { reply_markup: MAIN_MENU_KEYBOARD }
           );
           return;
