@@ -6,6 +6,7 @@ export interface CustomerDocument {
   telegramUsername?: string;
   faydaApiKey?: string;
   balance: number; // Admin-managed verification quota
+  usedCount?: number; // Total verifications consumed
   createdAt: Date;
   updatedAt: Date;
 }
@@ -87,17 +88,75 @@ export async function getCustomersCollection(): Promise<Collection<CustomerDocum
   return col;
 }
 
+const customerCache = new Map<number, { doc: CustomerDocument | null; expires: number }>();
+
+export function invalidateCustomerCache(telegramUserId?: number) {
+  if (telegramUserId !== undefined) {
+    customerCache.delete(telegramUserId);
+  } else {
+    customerCache.clear();
+  }
+}
+
 export async function findCustomerByTelegramId(
   telegramUserId: number
 ): Promise<CustomerDocument | null> {
+  const cached = customerCache.get(telegramUserId);
+  if (cached && Date.now() < cached.expires) {
+    return cached.doc;
+  }
   const col = await getCustomersCollection();
-  return col.findOne({ telegramUserId });
+  const doc = await col.findOne({ telegramUserId });
+  customerCache.set(telegramUserId, { doc, expires: Date.now() + 5000 });
+  return doc;
+}
+
+export async function createCustomer(
+  telegramUserId: number,
+  data: { telegramUsername?: string; balance: number }
+): Promise<CustomerDocument> {
+  const col = await getCustomersCollection();
+  const now = new Date();
+  const doc: CustomerDocument = {
+    telegramUserId,
+    telegramUsername: data.telegramUsername || undefined,
+    balance: Math.max(0, typeof data.balance === "number" ? data.balance : 0),
+    usedCount: 0,
+    createdAt: now,
+    updatedAt: now,
+  };
+  customerCache.delete(telegramUserId);
+  await col.insertOne(doc);
+  return doc;
+}
+
+export async function updateCustomer(
+  telegramUserId: number,
+  data: { telegramUsername?: string; balance?: number }
+): Promise<CustomerDocument | null> {
+  customerCache.delete(telegramUserId);
+  const col = await getCustomersCollection();
+  const now = new Date();
+  const updateFields: any = { updatedAt: now };
+  if (data.telegramUsername !== undefined) {
+    updateFields.telegramUsername = data.telegramUsername || undefined;
+  }
+  if (typeof data.balance === "number") {
+    updateFields.balance = Math.max(0, data.balance);
+  }
+
+  return col.findOneAndUpdate(
+    { telegramUserId },
+    { $set: updateFields },
+    { returnDocument: "after" }
+  );
 }
 
 export async function upsertCustomer(
   telegramUserId: number,
   data: Partial<Omit<CustomerDocument, "telegramUserId" | "createdAt">>
 ): Promise<CustomerDocument | null> {
+  customerCache.delete(telegramUserId);
   const col = await getCustomersCollection();
   const now = new Date();
   const updateData: any = {
@@ -127,26 +186,109 @@ export async function upsertCustomer(
   return col.findOne({ telegramUserId });
 }
 
+export async function recordCustomerVerificationUsage(
+  telegramUserId: number
+): Promise<CustomerDocument | null> {
+  customerCache.delete(telegramUserId);
+  const col = await getCustomersCollection();
+  const now = new Date();
+  // Atomic decrement: only decrement if balance > 0 to prevent negative balances or concurrent double-draws
+  const res = await col.findOneAndUpdate(
+    { telegramUserId, balance: { $gt: 0 } },
+    {
+      $inc: { balance: -1, usedCount: 1 },
+      $set: { updatedAt: now },
+    },
+    { returnDocument: "after" }
+  );
+  if (res) return res;
+  return col.findOne({ telegramUserId });
+}
+
 export async function adjustCustomerBalance(
   telegramUserId: number,
   amount: number
 ): Promise<CustomerDocument | null> {
+  customerCache.delete(telegramUserId);
   const col = await getCustomersCollection();
   const now = new Date();
-  await col.updateOne(
+
+  if (amount < 0) {
+    // If decrementing, prevent negative balances
+    const abs = Math.abs(amount);
+    const res = await col.findOneAndUpdate(
+      { telegramUserId, balance: { $gte: abs } },
+      {
+        $inc: { balance: amount },
+        $set: { updatedAt: now },
+      },
+      { returnDocument: "after" }
+    );
+    if (res) return res;
+    // If balance was less than deduction, floor at 0
+    return col.findOneAndUpdate(
+      { telegramUserId },
+      {
+        $set: { balance: 0, updatedAt: now },
+      },
+      { returnDocument: "after" }
+    );
+  }
+
+  return col.findOneAndUpdate(
     { telegramUserId },
     {
       $inc: { balance: amount },
       $set: { updatedAt: now },
-    }
+    },
+    { returnDocument: "after" }
   );
-  return col.findOne({ telegramUserId });
+}
+
+export interface DeleteCustomerResult {
+  deleted: boolean;
+  refundedBalance: number;
+  telegramUserId: number;
+  customer?: CustomerDocument;
+}
+
+/**
+ * Atomically deletes a customer document and returns their unused balance.
+ * Using findOneAndDelete guarantees that concurrent deletion requests will only
+ * find and delete the document once, preventing duplicate refunds or double deletions.
+ */
+export async function deleteCustomerAndRefund(
+  telegramUserId: number
+): Promise<DeleteCustomerResult> {
+  customerCache.delete(telegramUserId);
+  const col = await getCustomersCollection();
+  const deletedDoc = await col.findOneAndDelete({ telegramUserId });
+
+  if (!deletedDoc) {
+    return {
+      deleted: false,
+      refundedBalance: 0,
+      telegramUserId,
+    };
+  }
+
+  const unusedBalance =
+    typeof deletedDoc.balance === "number" && deletedDoc.balance > 0
+      ? deletedDoc.balance
+      : 0;
+
+  return {
+    deleted: true,
+    refundedBalance: unusedBalance,
+    telegramUserId,
+    customer: deletedDoc,
+  };
 }
 
 export async function deleteCustomer(
   telegramUserId: number
 ): Promise<boolean> {
-  const col = await getCustomersCollection();
-  const res = await col.deleteOne({ telegramUserId });
-  return res.deletedCount > 0;
+  const res = await deleteCustomerAndRefund(telegramUserId);
+  return res.deleted;
 }
+

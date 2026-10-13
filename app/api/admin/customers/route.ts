@@ -1,146 +1,258 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   getCustomersCollection,
+  createCustomer,
+  updateCustomer,
   upsertCustomer,
   adjustCustomerBalance,
   findCustomerByTelegramId,
   deleteCustomer,
+  deleteCustomerAndRefund,
 } from "@/lib/models/customer";
 
-const FAYDA_BASE_URL = "https://otp.affiliate.pro.et/api/v1";
-
-// Helper to query Fayda provider balance for a specific customer's API key
-async function fetchProviderBalance(apiKey: string): Promise<any> {
-  if (!apiKey) return null;
-  try {
-    const res = await fetch(`${FAYDA_BASE_URL}/balance`, {
-      method: "GET",
-      headers: { "x-api-key": apiKey },
-    });
-    if (!res.ok) return null;
-    return await res.json().catch(() => null);
-  } catch {
-    return null;
-  }
-}
-
-// GET /api/admin/customers - List all registered customers with their balance and provider limit
+// GET /api/admin/customers - List all registered customers with their authoritative balance
 export async function GET(req: NextRequest) {
   try {
     const col = await getCustomersCollection();
     const customers = await col.find({}).sort({ updatedAt: -1 }).toArray();
 
-    // Enrich customers with provider balance if they have an API key configured
-    const enriched = await Promise.all(
-      customers.map(async (cust) => {
-        let providerInfo = null;
-        let liveBalance = cust.balance || 0;
+    const mapped = customers.map((cust) => {
+      const balance = typeof cust.balance === "number" ? cust.balance : 0;
+      const usedCount = typeof cust.usedCount === "number" ? cust.usedCount : 0;
 
-        if (cust.faydaApiKey) {
-          const pBal = await fetchProviderBalance(cust.faydaApiKey);
-          if (pBal && pBal.success) {
-            liveBalance = Number(pBal.points ?? pBal.remainingPoints ?? pBal.balance ?? liveBalance);
-            // Sync database balance with live provider count if different
-            if (cust.balance !== liveBalance) {
-              await col.updateOne(
-                { telegramUserId: cust.telegramUserId },
-                { $set: { balance: liveBalance, updatedAt: new Date() } }
-              ).catch(() => {});
-            }
-            providerInfo = {
-              remainingPoints: liveBalance,
-              status: pBal.status || "active",
-              username: pBal.username || null,
-            };
-          } else {
-            providerInfo = {
-              remainingPoints: "Error",
-              status: pBal?.message || "Invalid/Inactive Key",
-            };
-          }
-        }
-        return {
-          telegramUserId: cust.telegramUserId,
-          telegramUsername: cust.telegramUsername || null,
-          hasApiKey: Boolean(cust.faydaApiKey),
-          // Mask API key for security so it is never exposed in plain text in UI responses
-          maskedApiKey: cust.faydaApiKey
-            ? `${cust.faydaApiKey.slice(0, 8)}...${cust.faydaApiKey.slice(-4)}`
-            : null,
-          balance: liveBalance,
-          providerLimit: providerInfo,
-          updatedAt: cust.updatedAt,
-        };
-      })
-    );
+      return {
+        telegramUserId: cust.telegramUserId,
+        telegramUsername: cust.telegramUsername || null,
+        hasApiKey: Boolean(cust.faydaApiKey),
+        maskedApiKey: cust.faydaApiKey
+          ? `${cust.faydaApiKey.slice(0, 8)}...${cust.faydaApiKey.slice(-4)}`
+          : null,
+        balance,
+        usedCount,
+        providerLimit: {
+          remainingPoints: balance,
+          status: balance > 0 ? "active" : "exhausted",
+        },
+        updatedAt: cust.updatedAt,
+      };
+    });
 
-    return NextResponse.json({ success: true, customers: enriched });
+    return NextResponse.json({ success: true, customers: mapped });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Internal error";
     return NextResponse.json({ success: false, message }, { status: 500 });
   }
 }
 
-// POST /api/admin/customers - Register or update a customer with individual API key
+const FAYDA_BASE_URL = "https://otp.affiliate.pro.et/api/v1";
+
+// In-memory mutex to prevent concurrent requests from exceeding the available pool
+let isAdjusting = false;
+const lockQueue: (() => void)[] = [];
+
+async function acquireAdjustmentLock(): Promise<() => void> {
+  if (!isAdjusting) {
+    isAdjusting = true;
+    return () => {
+      isAdjusting = false;
+      const next = lockQueue.shift();
+      if (next) next();
+    };
+  }
+  return new Promise((resolve) => {
+    lockQueue.push(() => {
+      isAdjusting = true;
+      resolve(() => {
+        isAdjusting = false;
+        const next = lockQueue.shift();
+        if (next) next();
+      });
+    });
+  });
+}
+
+// Helper to query live available points of default admin Fayda key
+async function fetchDefaultAdminProviderBalance(): Promise<number | null> {
+  const apiKey = (process.env.FAYDA_API_KEY || "").trim();
+  if (!apiKey) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6000);
+  try {
+    const res = await fetch(`${FAYDA_BASE_URL}/balance`, {
+      method: "GET",
+      headers: { "x-api-key": apiKey },
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null);
+    const points = Number(
+      data?.remainingPoints ?? data?.points ?? data?.balance ?? data?.credit ?? 0
+    );
+    return isNaN(points) ? null : points;
+  } catch {
+    clearTimeout(timer);
+    return null;
+  }
+}
+
+// Helper to calculate the remaining available balance in the default admin pool:
+// totalProviderPoints - totalPointsAllocatedToCustomers
+async function getAdminAvailableBalance(): Promise<{
+  providerPoints: number;
+  allocatedPoints: number;
+  availablePoints: number;
+} | null> {
+  const providerPoints = await fetchDefaultAdminProviderBalance();
+  if (providerPoints === null) return null;
+  try {
+    const col = await getCustomersCollection();
+    const agg = await col
+      .aggregate<{ total: number }>([
+        { $group: { _id: null, total: { $sum: "$balance" } } },
+      ])
+      .toArray();
+    const allocatedPoints =
+      agg.length > 0 && typeof agg[0].total === "number" ? agg[0].total : 0;
+    const availablePoints = Math.max(0, providerPoints - allocatedPoints);
+    return { providerPoints, allocatedPoints, availablePoints };
+  } catch {
+    return {
+      providerPoints,
+      allocatedPoints: 0,
+      availablePoints: providerPoints,
+    };
+  }
+}
+
+// POST /api/admin/customers - Register or update a customer with authoritative balance
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null);
-    if (!body || !body.telegramUserId) {
+    if (!body || body.telegramUserId === undefined || body.telegramUserId === null) {
       return NextResponse.json(
-        { success: false, message: "telegramUserId is required" },
+        { success: false, message: "Telegram Numeric ID is required." },
         { status: 400 }
       );
     }
 
     const telegramUserId = Number(body.telegramUserId);
-    if (isNaN(telegramUserId) || telegramUserId <= 0) {
+    if (!Number.isInteger(telegramUserId) || telegramUserId <= 0) {
       return NextResponse.json(
-        { success: false, message: "Valid numeric telegramUserId is required" },
+        { success: false, message: "Valid positive numeric Telegram ID is required." },
         { status: 400 }
       );
     }
 
-    const updatePayload: any = {};
-    if (body.telegramUsername !== undefined) {
-      updatePayload.telegramUsername = String(body.telegramUsername).replace(/^@/, "").trim();
+    const rawBalance = body.balance !== undefined ? Number(body.balance) : 0;
+    if (isNaN(rawBalance) || rawBalance < 0) {
+      return NextResponse.json(
+        { success: false, message: "Verification balance must be 0 or greater." },
+        { status: 400 }
+      );
     }
 
-    let initialBalance = typeof body.balance === "number" ? body.balance : 0;
+    const isUpdate = Boolean(body.isUpdate);
+    const cleanUsername =
+      body.telegramUsername !== undefined && body.telegramUsername !== null
+        ? String(body.telegramUsername).replace(/^@/, "").trim() || undefined
+        : undefined;
 
-    if (body.faydaApiKey !== undefined) {
-      const cleanKey = String(body.faydaApiKey).trim();
-      updatePayload.faydaApiKey = cleanKey;
+    // Acquire lock to guarantee concurrency safety and prevent exceeding balance pool
+    const releaseLock = await acquireAdjustmentLock();
 
-      if (cleanKey) {
-        // Query provider with this individual customer's API key
-        const pBal = await fetchProviderBalance(cleanKey);
-        if (!pBal || !pBal.success) {
+    try {
+      // Check if customer already exists using the unique telegramUserId index
+      const existing = await findCustomerByTelegramId(telegramUserId);
+
+      if (!isUpdate && existing) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: `Customer ${telegramUserId} is already registered. To change their balance, click Edit in the customer list.`,
+          },
+          { status: 409 }
+        );
+      }
+
+      // Check balance limit if allocating new or increased balance
+      const currentBal = existing ? (typeof existing.balance === "number" ? existing.balance : 0) : 0;
+      const additionalAllocated = isUpdate ? Math.max(0, rawBalance - currentBal) : rawBalance;
+
+      if (additionalAllocated > 0) {
+        const balInfo = await getAdminAvailableBalance();
+        if (balInfo === null) {
           return NextResponse.json(
             {
               success: false,
-              message: pBal?.message || "Invalid Fayda API key. Provider rejected credentials.",
+              message: "Cannot allocate calls: live provider balance could not be verified. Please check provider API connection.",
+            },
+            { status: 503 }
+          );
+        }
+        if (additionalAllocated > balInfo.availablePoints) {
+          return NextResponse.json(
+            {
+              success: false,
+              message: `Cannot allocate ${additionalAllocated} calls. Only ${balInfo.availablePoints} distributable calls remain (Live Provider: ${balInfo.providerPoints}, Total Allocated: ${balInfo.allocatedPoints}).`,
             },
             { status: 400 }
           );
         }
-        // Retrieve that API's current verification balance automatically
-        initialBalance = Number(pBal.points ?? pBal.remainingPoints ?? pBal.balance ?? 0);
       }
+
+      let customerResult;
+      if (isUpdate) {
+        customerResult = await updateCustomer(telegramUserId, {
+          telegramUsername: cleanUsername,
+          balance: rawBalance,
+        });
+        if (!customerResult) {
+          // If not found, upsert as fallback
+          customerResult = await upsertCustomer(telegramUserId, {
+            telegramUsername: cleanUsername,
+            balance: rawBalance,
+          });
+        }
+      } else {
+        customerResult = await createCustomer(telegramUserId, {
+          telegramUsername: cleanUsername,
+          balance: rawBalance,
+        });
+      }
+
+      if (!customerResult) {
+        throw new Error("Failed to save customer record.");
+      }
+
+      return NextResponse.json({
+        success: true,
+        customer: {
+          telegramUserId: customerResult.telegramUserId,
+          telegramUsername: customerResult.telegramUsername,
+          balance: customerResult.balance,
+        },
+      });
+    } finally {
+      releaseLock();
+    }
+  } catch (err: any) {
+    // Explicitly handle MongoDB E11000 duplicate key error from unique index on telegramUserId
+    if (
+      err &&
+      typeof err === "object" &&
+      ("code" in err && err.code === 11000 ||
+        ("message" in err && String(err.message).includes("E11000")))
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Customer is already registered in the database (duplicate Telegram ID).`,
+        },
+        { status: 409 }
+      );
     }
 
-    updatePayload.balance = initialBalance;
-
-    const updated = await upsertCustomer(telegramUserId, updatePayload);
-
-    return NextResponse.json({
-      success: true,
-      customer: {
-        telegramUserId: updated?.telegramUserId,
-        telegramUsername: updated?.telegramUsername,
-        balance: updated?.balance,
-      },
-    });
-  } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Internal error";
     return NextResponse.json({ success: false, message }, { status: 500 });
   }
@@ -160,38 +272,73 @@ export async function PATCH(req: NextRequest) {
     const telegramUserId = Number(body.telegramUserId);
     const adjustment = Number(body.adjustment);
 
-    const updated = await adjustCustomerBalance(telegramUserId, adjustment);
-    if (!updated) {
+    if (!Number.isInteger(telegramUserId) || telegramUserId <= 0) {
       return NextResponse.json(
-        { success: false, message: "Customer not found" },
-        { status: 404 }
+        { success: false, message: "Valid positive numeric Telegram ID is required." },
+        { status: 400 }
       );
     }
 
-    let providerInfo = null;
-    if (updated.faydaApiKey) {
-      const pBal = await fetchProviderBalance(updated.faydaApiKey);
-      if (pBal && pBal.success) {
-        providerInfo = {
-          remainingPoints: pBal.points ?? pBal.remainingPoints ?? pBal.balance,
-          status: pBal.status || "active",
-        };
-      }
+    if (!Number.isInteger(adjustment) || adjustment === 0) {
+      return NextResponse.json(
+        { success: false, message: "Adjustment must be a non-zero integer." },
+        { status: 400 }
+      );
     }
 
-    return NextResponse.json({
-      success: true,
-      telegramUserId: updated.telegramUserId,
-      newBalance: updated.balance,
-      providerLimit: providerInfo,
-    });
+    // Acquire lock to guarantee atomic concurrency safety across balance updates
+    const releaseLock = await acquireAdjustmentLock();
+
+    try {
+      if (adjustment > 0) {
+        const balInfo = await getAdminAvailableBalance();
+        if (balInfo === null) {
+          return NextResponse.json(
+            {
+              success: false,
+              message: "Cannot adjust balance: live provider balance could not be verified. Please check provider API connection.",
+            },
+            { status: 503 }
+          );
+        }
+        if (adjustment > balInfo.availablePoints) {
+          return NextResponse.json(
+            {
+              success: false,
+              message: `Cannot allocate ${adjustment} calls. Only ${balInfo.availablePoints} distributable calls remain (Live Provider: ${balInfo.providerPoints}, Total Allocated: ${balInfo.allocatedPoints}).`,
+            },
+            { status: 400 }
+          );
+        }
+      }
+
+      const updated = await adjustCustomerBalance(telegramUserId, adjustment);
+      if (!updated) {
+        return NextResponse.json(
+          { success: false, message: "Customer not found" },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        telegramUserId: updated.telegramUserId,
+        newBalance: updated.balance,
+        providerLimit: {
+          remainingPoints: updated.balance,
+          status: updated.balance > 0 ? "active" : "exhausted",
+        },
+      });
+    } finally {
+      releaseLock();
+    }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Internal error";
     return NextResponse.json({ success: false, message }, { status: 500 });
   }
 }
 
-// DELETE /api/admin/customers - Remove a customer
+// DELETE /api/admin/customers - Remove a customer and return unused balance to admin available pool
 export async function DELETE(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -209,19 +356,45 @@ export async function DELETE(req: NextRequest) {
     }
 
     const telegramUserId = Number(userIdStr);
-    const success = await deleteCustomer(telegramUserId);
-
-    if (!success) {
+    if (!Number.isInteger(telegramUserId) || telegramUserId <= 0) {
       return NextResponse.json(
-        { success: false, message: "Customer not found or already deleted" },
-        { status: 404 }
+        { success: false, message: "Valid positive numeric Telegram ID is required." },
+        { status: 400 }
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      message: `Customer ${telegramUserId} removed successfully`,
-    });
+    // Acquire lock to guarantee atomic concurrency safety across balance updates, adjustments, and deletions
+    const releaseLock = await acquireAdjustmentLock();
+
+    try {
+      // Atomically delete customer and retrieve their unused balance
+      // Prevents concurrent duplicate deletions or double refunds
+      const result = await deleteCustomerAndRefund(telegramUserId);
+
+      if (!result.deleted) {
+        return NextResponse.json(
+          { success: false, message: "Customer not found or already deleted" },
+          { status: 404 }
+        );
+      }
+
+      // Calculate refreshed admin available balance after returning customer's unused balance
+      const balInfo = await getAdminAvailableBalance();
+
+      return NextResponse.json({
+        success: true,
+        message:
+          result.refundedBalance > 0
+            ? `Customer ${telegramUserId} removed successfully. ${result.refundedBalance} unused API verification ${
+                result.refundedBalance === 1 ? "call" : "calls"
+              } returned to admin available balance.`
+            : `Customer ${telegramUserId} removed successfully.`,
+        refundedBalance: result.refundedBalance,
+        adminAvailableBalance: balInfo?.availablePoints ?? null,
+      });
+    } finally {
+      releaseLock();
+    }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Internal error";
     return NextResponse.json({ success: false, message }, { status: 500 });

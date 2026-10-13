@@ -30,25 +30,67 @@ export default function AdminPage() {
   const [editingUserId, setEditingUserId] = useState<number | null>(null);
   const [telegramUserId, setTelegramUserId] = useState("");
   const [telegramUsername, setTelegramUsername] = useState("");
-  const [faydaApiKey, setFaydaApiKey] = useState("");
   const [initialBalance, setInitialBalance] = useState("0");
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [adjustingId, setAdjustingId] = useState<number | null>(null);
-  const [checkingKeyBalance, setCheckingKeyBalance] = useState(false);
-  const [keyBalanceStatus, setKeyBalanceStatus] = useState<string | null>(null);
+  const [adjustInputs, setAdjustInputs] = useState<Record<number, string>>({});
+
+  // Live Default Admin Fayda Provider Balance State
+  const [providerBalance, setProviderBalance] = useState<{
+    liveProviderPoints: number;
+    allocatedPoints: number;
+    remainingDistributable: number;
+    points: number;
+    status: string;
+    username?: string;
+  } | null>(null);
+  const [providerBalanceLoading, setProviderBalanceLoading] = useState(false);
+  const [providerBalanceError, setProviderBalanceError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchCustomers();
+    fetchAdminProviderBalance();
   }, []);
+
+  async function fetchAdminProviderBalance() {
+    setProviderBalanceLoading(true);
+    setProviderBalanceError(null);
+    try {
+      const res = await fetch("/api/fayda/balance");
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
+        setProviderBalance({
+          liveProviderPoints:
+            typeof data.liveProviderPoints === "number"
+              ? data.liveProviderPoints
+              : typeof data.totalProviderPoints === "number"
+              ? data.totalProviderPoints
+              : Number(data.points ?? 0),
+          allocatedPoints: typeof data.allocatedPoints === "number" ? data.allocatedPoints : 0,
+          remainingDistributable:
+            typeof data.remainingDistributable === "number"
+              ? data.remainingDistributable
+              : Number(data.points ?? 0),
+          points: typeof data.points === "number" ? data.points : 0,
+          status: data.status || "active",
+          username: data.username,
+        });
+      } else {
+        setProviderBalanceError(data?.message || "Failed to load provider balance");
+      }
+    } catch (err: any) {
+      setProviderBalanceError(err.message || "Network error querying provider balance");
+    } finally {
+      setProviderBalanceLoading(false);
+    }
+  }
 
   function handleStartAdd() {
     setEditingUserId(null);
     setTelegramUserId("");
     setTelegramUsername("");
-    setFaydaApiKey("");
     setInitialBalance("0");
-    setKeyBalanceStatus(null);
     setError(null);
     const formEl = document.getElementById("customer-form-card");
     if (formEl) formEl.scrollIntoView({ behavior: "smooth" });
@@ -58,9 +100,7 @@ export default function AdminPage() {
     setEditingUserId(customer.telegramUserId);
     setTelegramUserId(String(customer.telegramUserId));
     setTelegramUsername(customer.telegramUsername || "");
-    setFaydaApiKey("");
     setInitialBalance(String(customer.balance));
-    setKeyBalanceStatus(null);
     setError(null);
     setSuccessMessage(null);
     const formEl = document.getElementById("customer-form-card");
@@ -89,55 +129,16 @@ export default function AdminPage() {
         throw new Error(data.message || "Failed to delete customer");
       }
       setCustomers((prev) => prev.filter((c) => c.telegramUserId !== userId));
-      setSuccessMessage(`Customer ${userId} deleted successfully.`);
+      setSuccessMessage(data.message || `Customer ${userId} deleted successfully.`);
       if (editingUserId === userId) {
         handleStartAdd();
       }
+      // Instantly refresh admin provider balance to display returned balance
+      fetchAdminProviderBalance();
     } catch (err: any) {
       setError(err.message || "Delete error");
     } finally {
       setDeletingId(null);
-    }
-  }
-
-  async function checkKeyBalance(key: string) {
-    const cleanKey = key.trim();
-    if (!cleanKey) {
-      setKeyBalanceStatus(null);
-      return;
-    }
-    setCheckingKeyBalance(true);
-    setKeyBalanceStatus("Checking API key balance...");
-    try {
-      const res = await fetch("/api/admin/check-key-balance", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey: cleanKey }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setInitialBalance(String(data.points));
-        setKeyBalanceStatus(`✅ Live API Balance: ${data.points} points`);
-      } else {
-        setKeyBalanceStatus(`⚠️ ${data.message || "Invalid or inaccessible API key"}`);
-      }
-    } catch {
-      setKeyBalanceStatus("⚠️ Could not contact Fayda provider");
-    } finally {
-      setCheckingKeyBalance(false);
-    }
-  }
-
-  function handleApiKeyChange(val: string) {
-    setFaydaApiKey(val);
-    const trimmed = val.trim();
-    if (trimmed.length >= 10) {
-      checkKeyBalance(trimmed);
-    } else if (!trimmed) {
-      setKeyBalanceStatus(null);
-      if (!editingUserId) {
-        setInitialBalance("0");
-      }
     }
   }
 
@@ -160,20 +161,57 @@ export default function AdminPage() {
 
   async function handleRegisterCustomer(e: React.FormEvent) {
     e.preventDefault();
-    if (!telegramUserId.trim()) return;
+    if (formSubmitting) return;
+
+    const trimmedId = telegramUserId.trim();
+    if (!trimmedId) {
+      setError("Telegram Numeric ID is required.");
+      return;
+    }
+
+    const idNum = Number(trimmedId);
+    if (!Number.isInteger(idNum) || idNum <= 0) {
+      setError("Please enter a valid positive numeric Telegram ID.");
+      return;
+    }
+
+    const trimmedBal = initialBalance.trim();
+    const balNum = Number(trimmedBal);
+    if (trimmedBal === "" || isNaN(balNum) || balNum < 0) {
+      setError("Verification balance must be a non-negative number (0 or greater).");
+      return;
+    }
+
+    const isEditing = editingUserId !== null;
+    const existingCust = customers.find((c) => c.telegramUserId === idNum);
+    const additionalRequested = isEditing
+      ? Math.max(0, balNum - (existingCust?.balance ?? 0))
+      : balNum;
+
+    if (additionalRequested > 0 && providerBalance !== null) {
+      const remainingDistributable = Math.max(
+        0,
+        providerBalance.liveProviderPoints - totalBalance
+      );
+      if (additionalRequested > remainingDistributable) {
+        setError(
+          `Cannot allocate ${additionalRequested} calls. Only ${remainingDistributable} distributable calls remain available (Live Provider: ${providerBalance.liveProviderPoints}, Total Allocated: ${totalBalance}).`
+        );
+        return;
+      }
+    }
+
     setFormSubmitting(true);
     setError(null);
     setSuccessMessage(null);
+
     try {
       const payload: any = {
-        telegramUserId: Number(telegramUserId.trim()),
+        telegramUserId: idNum,
         telegramUsername: telegramUsername.trim() || undefined,
-        balance: Number(initialBalance) || 0,
+        balance: balNum,
+        isUpdate: isEditing,
       };
-
-      if (faydaApiKey.trim()) {
-        payload.faydaApiKey = faydaApiKey.trim();
-      }
 
       const res = await fetch("/api/admin/customers", {
         method: "POST",
@@ -182,28 +220,58 @@ export default function AdminPage() {
         },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || "Failed to save customer");
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.message || `Failed to save customer (HTTP ${res.status})`);
       }
 
-      const wasEditing = editingUserId !== null;
       setSuccessMessage(
-        wasEditing
-          ? `Customer ${telegramUserId} updated successfully!`
-          : `Customer ${telegramUserId} registered successfully!`
+        isEditing
+          ? `Customer ${idNum} updated successfully! Balance set to ${balNum}.`
+          : `Customer ${idNum} registered successfully with balance ${balNum}!`
       );
       handleStartAdd();
-      fetchCustomers();
+      await Promise.all([fetchCustomers(), fetchAdminProviderBalance()]);
     } catch (err: any) {
-      setError(err.message || "Registration error");
+      setError(err.message || "Registration error occurred");
     } finally {
       setFormSubmitting(false);
     }
   }
 
-  async function handleAdjustBalance(userId: number, adjustment: number) {
+  async function handleAdjustCount(userId: number, direction: 1 | -1) {
+    const rawVal = adjustInputs[userId]?.trim();
+    if (!rawVal) {
+      setError("Please enter the number of API calls to adjust in the input field.");
+      return;
+    }
+    const parsedAmount = Math.abs(Number(rawVal));
+    if (isNaN(parsedAmount) || !Number.isInteger(parsedAmount) || parsedAmount <= 0) {
+      setError("Please enter a valid positive whole number of API calls to adjust.");
+      return;
+    }
+
+    const adjustment = direction * parsedAmount;
+
+    // Client-side limit check against distributable balance
+    if (adjustment > 0 && providerBalance !== null) {
+      const remainingDistributable = Math.max(
+        0,
+        providerBalance.liveProviderPoints - totalBalance
+      );
+      if (adjustment > remainingDistributable) {
+        setError(
+          `Cannot allocate ${adjustment} calls. Only ${remainingDistributable} distributable calls remain available (Live Provider: ${providerBalance.liveProviderPoints}, Total Allocated: ${totalBalance}).`
+        );
+        return;
+      }
+    }
+
     setAdjustingId(userId);
+    setError(null);
+    setSuccessMessage(null);
+
     try {
       const res = await fetch("/api/admin/customers", {
         method: "PATCH",
@@ -215,16 +283,35 @@ export default function AdminPage() {
           adjustment,
         }),
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setCustomers((prev) =>
-          prev.map((c) =>
-            c.telegramUserId === userId ? { ...c, balance: data.newBalance } : c
-          )
-        );
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.message || `Failed to adjust balance (HTTP ${res.status})`);
       }
-    } catch {
-      fetchCustomers();
+
+      setCustomers((prev) =>
+        prev.map((c) =>
+          c.telegramUserId === userId ? { ...c, balance: data.newBalance } : c
+        )
+      );
+
+      // Clear input for this customer upon success
+      setAdjustInputs((prev) => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+
+      setSuccessMessage(
+        adjustment > 0
+          ? `Added ${parsedAmount} calls to customer ${userId}. New balance: ${data.newBalance}.`
+          : `Deducted ${parsedAmount} calls from customer ${userId}. New balance: ${data.newBalance}.`
+      );
+
+      // Refresh live admin provider balance to update remaining pool
+      fetchAdminProviderBalance();
+    } catch (err: any) {
+      setError(err.message || "Adjustment error occurred");
     } finally {
       setAdjustingId(null);
     }
@@ -255,10 +342,10 @@ export default function AdminPage() {
     () => customers.reduce((sum, c) => sum + (c.balance || 0), 0),
     [customers]
   );
-  const dedicatedApiKeysCount = useMemo(
-    () => customers.filter((c) => c.hasApiKey).length,
-    [customers]
-  );
+  const remainingForDistribution = useMemo(() => {
+    if (!providerBalance) return null;
+    return Math.max(0, providerBalance.liveProviderPoints - totalBalance);
+  }, [providerBalance, totalBalance]);
 
   return (
     <div className="min-h-screen bg-slate-950 px-3 py-6 text-slate-100 sm:px-6 lg:px-8">
@@ -294,60 +381,105 @@ export default function AdminPage() {
           </div>
         </header>
 
-        {/* Overview Stats Cards */}
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
-          {loading ? (
-            <>
-              {[1, 2, 3].map((i) => (
-                <div
-                  key={i}
-                  className={`rounded-xl border border-slate-800/80 bg-slate-900/40 p-3.5 sm:p-4 animate-pulse ${
-                    i === 3 ? "col-span-2 lg:col-span-1" : ""
-                  }`}
-                >
-                  <div className="h-3 w-20 rounded bg-slate-800" />
-                  <div className="mt-2 h-7 w-14 rounded bg-slate-700" />
-                  <div className="mt-2 h-2.5 w-28 rounded bg-slate-800/60" />
-                </div>
-              ))}
-            </>
-          ) : (
-            <>
-              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-3.5 sm:p-4 backdrop-blur-sm">
-                <span className="text-[11px] sm:text-xs font-medium text-slate-400">
-                  Total Customers
+        {/* Overview Stats Cards: 4 Real-time Summary Cards */}
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+          {/* Card 1: Live Admin Provider Key */}
+          <div className="rounded-xl border border-emerald-500/40 bg-gradient-to-br from-slate-900/90 via-slate-900/70 to-emerald-950/30 p-3.5 sm:p-4 backdrop-blur-sm relative shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] sm:text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+                <span className="inline-block h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                Live Admin Provider Key
+              </span>
+              <button
+                type="button"
+                onClick={fetchAdminProviderBalance}
+                disabled={providerBalanceLoading}
+                className="text-xs text-slate-400 hover:text-emerald-300 disabled:opacity-40 transition-colors p-1 touch-manipulation"
+                title="Refresh live provider balance"
+                aria-label="Refresh live provider balance"
+              >
+                🔄
+              </button>
+            </div>
+            <div className="mt-2 flex items-baseline gap-2">
+              {providerBalanceLoading ? (
+                <div className="h-8 w-16 rounded bg-slate-800 animate-pulse" />
+              ) : providerBalanceError ? (
+                <span className="text-xs sm:text-sm font-semibold text-amber-400" title={providerBalanceError}>
+                  ⚠️ Connection Issue
                 </span>
-                <p className="mt-1 text-xl sm:text-2xl font-bold text-white">
-                  {customers.length}
+              ) : (
+                <p className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                  {providerBalance !== null ? providerBalance.liveProviderPoints : "—"}
                 </p>
-                <span className="text-[10px] sm:text-xs text-slate-500">
-                  Registered in database
+              )}
+              <span className="text-xs font-medium text-slate-400">
+                calls available
+              </span>
+            </div>
+            <div className="mt-1.5 flex items-center justify-between text-[10px] sm:text-[11px] text-slate-400">
+              <span>Default provider API</span>
+              {providerBalance?.status && (
+                <span className={`capitalize font-semibold ${
+                  providerBalance.status === "active" ? "text-emerald-400" : "text-amber-400"
+                }`}>
+                  {providerBalance.status}
                 </span>
-              </div>
-              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-3.5 sm:p-4 backdrop-blur-sm">
-                <span className="text-[11px] sm:text-xs font-medium text-slate-400">
-                  Dedicated API Keys
+              )}
+            </div>
+          </div>
+
+          {/* Card 2: Allocated to Customers */}
+          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-3.5 sm:p-4 backdrop-blur-sm">
+            <span className="text-[11px] sm:text-xs font-medium text-slate-400">
+              Allocated to Customers
+            </span>
+            <p className="mt-2 text-2xl sm:text-3xl font-bold text-amber-400 tracking-tight">
+              {loading ? "..." : totalBalance}
+            </p>
+            <div className="mt-1.5 text-[10px] sm:text-[11px] text-slate-500">
+              Total calls across users
+            </div>
+          </div>
+
+          {/* Card 3: Remaining for Distribution */}
+          <div className="rounded-xl border border-cyan-500/30 bg-gradient-to-br from-slate-900/90 via-slate-900/70 to-cyan-950/30 p-3.5 sm:p-4 backdrop-blur-sm relative shadow-sm">
+            <span className="text-[11px] sm:text-xs font-semibold text-cyan-400">
+              Remaining for Distribution
+            </span>
+            <div className="mt-2 flex items-baseline gap-2">
+              {providerBalanceLoading ? (
+                <div className="h-8 w-16 rounded bg-slate-800 animate-pulse" />
+              ) : providerBalanceError ? (
+                <span className="text-xs sm:text-sm font-semibold text-amber-400" title={providerBalanceError}>
+                  ⚠️ Unavailable
                 </span>
-                <p className="mt-1 text-xl sm:text-2xl font-bold text-emerald-400">
-                  {dedicatedApiKeysCount}
+              ) : (
+                <p className="text-2xl sm:text-3xl font-extrabold text-cyan-300 tracking-tight">
+                  {remainingForDistribution !== null ? remainingForDistribution : "—"}
                 </p>
-                <span className="text-[10px] sm:text-xs text-slate-500">
-                  Individual keys connected
-                </span>
-              </div>
-              <div className="col-span-2 lg:col-span-1 rounded-xl border border-slate-800 bg-slate-900/60 p-3.5 sm:p-4 backdrop-blur-sm">
-                <span className="text-[11px] sm:text-xs font-medium text-slate-400">
-                  Allocated Verifications
-                </span>
-                <p className="mt-1 text-xl sm:text-2xl font-bold text-amber-400">
-                  {totalBalance}
-                </p>
-                <span className="text-[10px] sm:text-xs text-slate-500">
-                  Total points across customers
-                </span>
-              </div>
-            </>
-          )}
+              )}
+              <span className="text-xs font-medium text-slate-400">
+                distributable calls
+              </span>
+            </div>
+            <div className="mt-1.5 text-[10px] sm:text-[11px] text-slate-400">
+              Live Provider minus Allocated
+            </div>
+          </div>
+
+          {/* Card 4: Total Customers */}
+          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-3.5 sm:p-4 backdrop-blur-sm">
+            <span className="text-[11px] sm:text-xs font-medium text-slate-400">
+              Total Customers
+            </span>
+            <p className="mt-2 text-2xl sm:text-3xl font-bold text-white tracking-tight">
+              {loading ? "..." : customers.length}
+            </p>
+            <div className="mt-1.5 text-[10px] sm:text-[11px] text-slate-500">
+              Registered in database
+            </div>
+          </div>
         </div>
 
         {/* Register / Update Customer Card */}
@@ -411,7 +543,7 @@ export default function AdminPage() {
           )}
 
           <form onSubmit={handleRegisterCustomer} className="space-y-4">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-300">
                   Telegram Numeric ID <span className="text-red-400">*</span>
@@ -441,39 +573,8 @@ export default function AdminPage() {
 
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-300">
-                  Fayda API Key / Credential
+                  Verification Balance Count
                 </label>
-                <input
-                  type="text"
-                  placeholder={editingUserId ? "Leave blank to keep key" : "Paste fayda_... key"}
-                  value={faydaApiKey}
-                  onChange={(e) => handleApiKeyChange(e.target.value)}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-base sm:text-sm text-white placeholder-slate-600 focus:border-emerald-500 focus:outline-none transition-colors font-mono text-xs"
-                />
-                {keyBalanceStatus && (
-                  <p
-                    className={`mt-1.5 text-xs ${
-                      keyBalanceStatus.startsWith("✅")
-                        ? "text-emerald-400 font-semibold"
-                        : keyBalanceStatus.startsWith("⚠️")
-                        ? "text-amber-400"
-                        : "text-slate-400 animate-pulse"
-                    }`}
-                  >
-                    {keyBalanceStatus}
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <div className="mb-1 flex items-center justify-between">
-                  <label className="block text-xs font-medium text-slate-300">
-                    Verification Balance Count
-                  </label>
-                  {checkingKeyBalance && (
-                    <span className="text-[10px] text-emerald-400 animate-pulse">Reading balance...</span>
-                  )}
-                </div>
                 <input
                   type="number"
                   value={initialBalance}
@@ -481,7 +582,12 @@ export default function AdminPage() {
                   className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-base sm:text-sm text-emerald-400 font-semibold placeholder-slate-600 focus:border-emerald-500 focus:outline-none transition-colors"
                 />
                 <p className="mt-1 text-[11px] text-slate-500">
-                  Auto-populated or set manually.
+                  Verification balance allocated to this user.
+                  {remainingForDistribution !== null && (
+                    <span className="block sm:inline sm:ml-1 text-emerald-400/90 font-medium">
+                      ({remainingForDistribution} distributable calls remaining)
+                    </span>
+                  )}
                 </p>
               </div>
             </div>
@@ -595,8 +701,6 @@ export default function AdminPage() {
                     <tr>
                       <th className="px-4 py-3">Telegram ID</th>
                       <th className="px-4 py-3">Username</th>
-                      <th className="px-4 py-3">API Credential</th>
-                      <th className="px-4 py-3">Provider Limit</th>
                       <th className="px-4 py-3">Available Balance</th>
                       <th className="px-4 py-3 text-center">Adjust Count</th>
                       <th className="px-4 py-3 text-right">Actions</th>
@@ -607,10 +711,8 @@ export default function AdminPage() {
                       <tr key={n} className="h-14">
                         <td className="px-4 py-3.5"><div className="h-4 w-24 rounded bg-slate-700" /></td>
                         <td className="px-4 py-3.5"><div className="h-4 w-20 rounded bg-slate-800" /></td>
-                        <td className="px-4 py-3.5"><div className="h-3 w-28 rounded bg-slate-800" /></td>
-                        <td className="px-4 py-3.5"><div className="h-4 w-16 rounded-full bg-slate-800" /></td>
                         <td className="px-4 py-3.5"><div className="h-4 w-24 rounded bg-slate-700" /></td>
-                        <td className="px-4 py-3.5 text-center"><div className="mx-auto h-7 w-28 rounded bg-slate-800" /></td>
+                        <td className="px-4 py-3.5 text-center"><div className="mx-auto h-7 w-32 rounded bg-slate-800" /></td>
                         <td className="px-4 py-3.5 text-right"><div className="ml-auto h-7 w-24 rounded bg-slate-800" /></td>
                       </tr>
                     ))}
@@ -645,7 +747,7 @@ export default function AdminPage() {
                     key={c.telegramUserId}
                     className="rounded-xl border border-slate-800 bg-slate-900/90 p-3.5 shadow-sm space-y-3 transition-colors hover:border-slate-700"
                   >
-                    {/* Top Row: User & Status */}
+                    {/* Top Row: User ID & Username */}
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-sm font-bold text-emerald-400">
@@ -657,68 +759,46 @@ export default function AdminPage() {
                           </span>
                         )}
                       </div>
-                      {c.providerLimit ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 text-[11px] font-medium text-blue-400">
-                          🔌 {c.providerLimit.remainingPoints} pts
-                        </span>
-                      ) : (
-                        <span className="text-[10px] text-slate-500">No provider</span>
-                      )}
-                    </div>
-
-                    {/* Middle: API Key & Balance */}
-                    <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-950/60 p-2.5 text-xs border border-slate-800/60">
-                      <div>
+                      <div className="text-right">
                         <span className="text-[10px] uppercase text-slate-500 font-medium block">
-                          API Key
+                          Available Balance
                         </span>
-                        <span className="font-mono text-[11px] text-slate-400 truncate block mt-0.5">
-                          {c.maskedApiKey || "Default Server API"}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] uppercase text-slate-500 font-medium block">
-                          Balance
-                        </span>
-                        <span className="text-sm font-bold text-emerald-400 block mt-0.5">
-                          {c.balance} <span className="text-[10px] font-normal text-slate-400">pts</span>
+                        <span className="text-sm font-bold text-emerald-400 block">
+                          {c.balance} <span className="text-[10px] font-normal text-slate-400">calls</span>
                         </span>
                       </div>
                     </div>
 
-                    {/* Quick Adjust Buttons (min-h 38px for touch targets) */}
+                    {/* Adjust Count Input Row */}
                     <div>
-                      <div className="text-[10px] uppercase tracking-wider text-slate-500 font-medium mb-1">
-                        Quick Adjust Count
-                      </div>
-                      <div className="grid grid-cols-4 gap-1.5">
+                      <span className="text-[10px] uppercase tracking-wider text-slate-500 font-medium block mb-1">
+                        Adjust Count
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          placeholder="e.g. 5"
+                          value={adjustInputs[c.telegramUserId] ?? ""}
+                          onChange={(e) =>
+                            setAdjustInputs((prev) => ({ ...prev, [c.telegramUserId]: e.target.value }))
+                          }
+                          className="flex-1 min-w-0 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-emerald-500 focus:outline-none transition-colors"
+                        />
                         <button
-                          onClick={() => handleAdjustBalance(c.telegramUserId, -1)}
+                          onClick={() => handleAdjustCount(c.telegramUserId, 1)}
                           disabled={adjustingId === c.telegramUserId}
-                          className="min-h-[38px] rounded-lg bg-slate-800 text-xs font-bold text-red-400 hover:bg-slate-700 active:scale-95 transition-all flex items-center justify-center touch-manipulation disabled:opacity-50"
+                          className="min-h-[38px] px-3.5 rounded-lg bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 font-bold text-xs hover:bg-emerald-500/30 active:scale-95 transition-all flex items-center justify-center disabled:opacity-50 touch-manipulation"
+                          title="Add API calls"
                         >
-                          -1
+                          + Add
                         </button>
                         <button
-                          onClick={() => handleAdjustBalance(c.telegramUserId, 1)}
+                          onClick={() => handleAdjustCount(c.telegramUserId, -1)}
                           disabled={adjustingId === c.telegramUserId}
-                          className="min-h-[38px] rounded-lg bg-slate-800 text-xs font-bold text-emerald-400 hover:bg-slate-700 active:scale-95 transition-all flex items-center justify-center touch-manipulation disabled:opacity-50"
+                          className="min-h-[38px] px-3.5 rounded-lg bg-red-600/20 border border-red-500/30 text-red-400 font-bold text-xs hover:bg-red-500/30 active:scale-95 transition-all flex items-center justify-center disabled:opacity-50 touch-manipulation"
+                          title="Subtract API calls"
                         >
-                          +1
-                        </button>
-                        <button
-                          onClick={() => handleAdjustBalance(c.telegramUserId, 10)}
-                          disabled={adjustingId === c.telegramUserId}
-                          className="min-h-[38px] rounded-lg bg-slate-800 text-xs font-bold text-emerald-400 hover:bg-slate-700 active:scale-95 transition-all flex items-center justify-center touch-manipulation disabled:opacity-50"
-                        >
-                          +10
-                        </button>
-                        <button
-                          onClick={() => handleAdjustBalance(c.telegramUserId, 50)}
-                          disabled={adjustingId === c.telegramUserId}
-                          className="min-h-[38px] rounded-lg bg-slate-800 text-xs font-bold text-emerald-400 hover:bg-slate-700 active:scale-95 transition-all flex items-center justify-center touch-manipulation disabled:opacity-50"
-                        >
-                          +50
+                          − Deduct
                         </button>
                       </div>
                     </div>
@@ -750,8 +830,6 @@ export default function AdminPage() {
                     <tr>
                       <th className="px-3 lg:px-4 py-3">Telegram ID</th>
                       <th className="px-3 lg:px-4 py-3">Username</th>
-                      <th className="px-3 lg:px-4 py-3">API Credential</th>
-                      <th className="px-3 lg:px-4 py-3">Provider Limit</th>
                       <th className="px-3 lg:px-4 py-3">Available Balance</th>
                       <th className="px-3 lg:px-4 py-3 text-center">Adjust Count</th>
                       <th className="px-3 lg:px-4 py-3 text-right">Actions</th>
@@ -766,54 +844,37 @@ export default function AdminPage() {
                         <td className="px-3 lg:px-4 py-3.5">
                           {c.telegramUsername ? `@${c.telegramUsername}` : "-"}
                         </td>
-                        <td className="px-3 lg:px-4 py-3.5 font-mono text-xs text-slate-400">
-                          {c.maskedApiKey || <span className="text-slate-600">Default Server API</span>}
-                        </td>
-                        <td className="px-3 lg:px-4 py-3.5">
-                          {c.providerLimit ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 px-2.5 py-0.5 text-xs font-medium text-blue-400">
-                              🔌 {c.providerLimit.remainingPoints} pts
-                            </span>
-                          ) : (
-                            <span className="text-xs text-slate-500">-</span>
-                          )}
-                        </td>
                         <td className="px-3 lg:px-4 py-3.5 font-semibold text-white">
-                          <span className="text-base text-emerald-400">{c.balance}</span> verifications
+                          <span className="text-base text-emerald-400 font-bold">{c.balance}</span> verifications
                         </td>
                         <td className="px-3 lg:px-4 py-3.5 text-center">
-                          <div className="inline-flex items-center gap-1">
+                          <div className="inline-flex items-center gap-1.5 justify-center">
+                            <input
+                              type="number"
+                              placeholder="Count"
+                              value={adjustInputs[c.telegramUserId] ?? ""}
+                              onChange={(e) =>
+                                setAdjustInputs((prev) => ({ ...prev, [c.telegramUserId]: e.target.value }))
+                              }
+                              className="w-20 rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-white text-center placeholder-slate-600 focus:border-emerald-500 focus:outline-none transition-colors"
+                            />
                             <button
-                              onClick={() => handleAdjustBalance(c.telegramUserId, -1)}
+                              onClick={() => handleAdjustCount(c.telegramUserId, 1)}
                               disabled={adjustingId === c.telegramUserId}
-                              className="rounded bg-slate-800 px-2.5 py-1 text-xs font-bold text-red-400 hover:bg-slate-700 active:scale-95 transition-all disabled:opacity-50"
-                              title="Decrease by 1"
+                              className="min-h-[28px] min-w-[28px] rounded bg-emerald-600/20 border border-emerald-500/30 text-xs font-bold text-emerald-400 hover:bg-emerald-500/30 active:scale-95 transition-all flex items-center justify-center disabled:opacity-50"
+                              title="Add API calls"
+                              aria-label="Add API calls"
                             >
-                              -1
+                              +
                             </button>
                             <button
-                              onClick={() => handleAdjustBalance(c.telegramUserId, 1)}
+                              onClick={() => handleAdjustCount(c.telegramUserId, -1)}
                               disabled={adjustingId === c.telegramUserId}
-                              className="rounded bg-slate-800 px-2.5 py-1 text-xs font-bold text-emerald-400 hover:bg-slate-700 active:scale-95 transition-all disabled:opacity-50"
-                              title="Increase by 1"
+                              className="min-h-[28px] min-w-[28px] rounded bg-red-600/20 border border-red-500/30 text-xs font-bold text-red-400 hover:bg-red-500/30 active:scale-95 transition-all flex items-center justify-center disabled:opacity-50"
+                              title="Subtract API calls"
+                              aria-label="Subtract API calls"
                             >
-                              +1
-                            </button>
-                            <button
-                              onClick={() => handleAdjustBalance(c.telegramUserId, 10)}
-                              disabled={adjustingId === c.telegramUserId}
-                              className="rounded bg-slate-800 px-2.5 py-1 text-xs font-bold text-emerald-400 hover:bg-slate-700 active:scale-95 transition-all disabled:opacity-50"
-                              title="Increase by 10"
-                            >
-                              +10
-                            </button>
-                            <button
-                              onClick={() => handleAdjustBalance(c.telegramUserId, 50)}
-                              disabled={adjustingId === c.telegramUserId}
-                              className="rounded bg-slate-800 px-2.5 py-1 text-xs font-bold text-emerald-400 hover:bg-slate-700 active:scale-95 transition-all disabled:opacity-50"
-                              title="Increase by 50"
-                            >
-                              +50
+                              −
                             </button>
                           </div>
                         </td>
