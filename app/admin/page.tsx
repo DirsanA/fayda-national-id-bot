@@ -53,6 +53,24 @@ export default function AdminPage() {
     fetchAdminProviderBalance();
   }, []);
 
+  // Auto-dismiss floating popup message after 4.5 seconds
+  useEffect(() => {
+    if (!successMessage) return;
+    const timer = setTimeout(() => {
+      setSuccessMessage(null);
+    }, 4500);
+    return () => clearTimeout(timer);
+  }, [successMessage]);
+
+  // Auto-dismiss floating error popup message after 5.5 seconds
+  useEffect(() => {
+    if (!error) return;
+    const timer = setTimeout(() => {
+      setError(null);
+    }, 5500);
+    return () => clearTimeout(timer);
+  }, [error]);
+
   async function fetchAdminProviderBalance() {
     setProviderBalanceLoading(true);
     setProviderBalanceError(null);
@@ -348,7 +366,64 @@ export default function AdminPage() {
   }, [providerBalance, totalBalance]);
 
   return (
-    <div className="min-h-screen bg-slate-950 px-3 py-6 text-slate-100 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-slate-950 px-3 py-6 text-slate-100 sm:px-6 lg:px-8 relative">
+      {/* Floating Action Popup Notification */}
+      {(successMessage || error) && (
+        <aside
+          role="status"
+          aria-live="polite"
+          className="fixed top-5 right-5 sm:top-6 sm:right-6 z-50 max-w-sm sm:max-w-md w-[calc(100%-2.5rem)] pointer-events-auto transition-all duration-200"
+        >
+          {successMessage && (
+            <div className="flex items-start gap-3 rounded-2xl border border-emerald-500/40 bg-slate-900/95 p-4 shadow-2xl shadow-emerald-950/70 backdrop-blur-xl ring-1 ring-emerald-500/30">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-lg">
+                ✅
+              </span>
+              <div className="flex-1 min-w-0 pt-0.5">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 block">
+                  Action Completed
+                </span>
+                <p className="mt-1 text-xs sm:text-sm text-slate-100 font-medium leading-relaxed break-words">
+                  {successMessage}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSuccessMessage(null)}
+                className="shrink-0 rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
+                aria-label="Close notification"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {error && (
+            <div className="flex items-start gap-3 rounded-2xl border border-rose-500/40 bg-slate-900/95 p-4 shadow-2xl shadow-rose-950/70 backdrop-blur-xl ring-1 ring-rose-500/30">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/30 text-lg">
+                ⚠️
+              </span>
+              <div className="flex-1 min-w-0 pt-0.5">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-rose-400 block">
+                  Action Notice
+                </span>
+                <p className="mt-1 text-xs sm:text-sm text-slate-100 font-medium leading-relaxed break-words">
+                  {error}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setError(null)}
+                className="shrink-0 rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
+                aria-label="Close alert"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+        </aside>
+      )}
+
       <div className="mx-auto max-w-6xl space-y-6 sm:space-y-8">
         {/* Header */}
         <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-800/80 pb-5">
@@ -508,39 +583,6 @@ export default function AdminPage() {
               </button>
             )}
           </div>
-
-          {/* Notification banners */}
-          {successMessage && (
-            <div className="mb-4 flex items-center justify-between rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-3 text-xs sm:text-sm text-emerald-400">
-              <span className="flex items-center gap-1.5">
-                <span>✅</span>
-                <span>{successMessage}</span>
-              </span>
-              <button
-                onClick={() => setSuccessMessage(null)}
-                className="ml-2 min-h-[32px] min-w-[32px] flex items-center justify-center text-emerald-400 hover:text-emerald-200"
-                aria-label="Dismiss message"
-              >
-                ✕
-              </button>
-            </div>
-          )}
-
-          {error && (
-            <div className="mb-4 flex items-center justify-between rounded-lg bg-red-500/10 border border-red-500/30 p-3 text-xs sm:text-sm text-red-400">
-              <span className="flex items-center gap-1.5">
-                <span>⚠️</span>
-                <span>{error}</span>
-              </span>
-              <button
-                onClick={() => setError(null)}
-                className="ml-2 min-h-[32px] min-w-[32px] flex items-center justify-center text-red-400 hover:text-red-200"
-                aria-label="Dismiss error"
-              >
-                ✕
-              </button>
-            </div>
-          )}
 
           <form onSubmit={handleRegisterCustomer} className="space-y-4">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
