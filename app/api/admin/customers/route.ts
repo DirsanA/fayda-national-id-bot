@@ -4,6 +4,7 @@ import {
   upsertCustomer,
   adjustCustomerBalance,
   findCustomerByTelegramId,
+  deleteCustomer,
 } from "@/lib/models/customer";
 
 const FAYDA_BASE_URL = "https://otp.affiliate.pro.et/api/v1";
@@ -33,12 +34,28 @@ export async function GET(req: NextRequest) {
     const enriched = await Promise.all(
       customers.map(async (cust) => {
         let providerInfo = null;
+        let liveBalance = cust.balance || 0;
+
         if (cust.faydaApiKey) {
           const pBal = await fetchProviderBalance(cust.faydaApiKey);
-          if (pBal) {
+          if (pBal && pBal.success) {
+            liveBalance = Number(pBal.points ?? pBal.remainingPoints ?? pBal.balance ?? liveBalance);
+            // Sync database balance with live provider count if different
+            if (cust.balance !== liveBalance) {
+              await col.updateOne(
+                { telegramUserId: cust.telegramUserId },
+                { $set: { balance: liveBalance, updatedAt: new Date() } }
+              ).catch(() => {});
+            }
             providerInfo = {
-              remainingPoints: pBal.remainingPoints ?? pBal.balance ?? pBal.points ?? "N/A",
+              remainingPoints: liveBalance,
               status: pBal.status || "active",
+              username: pBal.username || null,
+            };
+          } else {
+            providerInfo = {
+              remainingPoints: "Error",
+              status: pBal?.message || "Invalid/Inactive Key",
             };
           }
         }
@@ -50,7 +67,7 @@ export async function GET(req: NextRequest) {
           maskedApiKey: cust.faydaApiKey
             ? `${cust.faydaApiKey.slice(0, 8)}...${cust.faydaApiKey.slice(-4)}`
             : null,
-          balance: cust.balance || 0,
+          balance: liveBalance,
           providerLimit: providerInfo,
           updatedAt: cust.updatedAt,
         };
@@ -64,7 +81,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/admin/customers - Register or update a customer
+// POST /api/admin/customers - Register or update a customer with individual API key
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null);
@@ -87,12 +104,31 @@ export async function POST(req: NextRequest) {
     if (body.telegramUsername !== undefined) {
       updatePayload.telegramUsername = String(body.telegramUsername).replace(/^@/, "").trim();
     }
+
+    let initialBalance = typeof body.balance === "number" ? body.balance : 0;
+
     if (body.faydaApiKey !== undefined) {
-      updatePayload.faydaApiKey = String(body.faydaApiKey).trim();
+      const cleanKey = String(body.faydaApiKey).trim();
+      updatePayload.faydaApiKey = cleanKey;
+
+      if (cleanKey) {
+        // Query provider with this individual customer's API key
+        const pBal = await fetchProviderBalance(cleanKey);
+        if (!pBal || !pBal.success) {
+          return NextResponse.json(
+            {
+              success: false,
+              message: pBal?.message || "Invalid Fayda API key. Provider rejected credentials.",
+            },
+            { status: 400 }
+          );
+        }
+        // Retrieve that API's current verification balance automatically
+        initialBalance = Number(pBal.points ?? pBal.remainingPoints ?? pBal.balance ?? 0);
+      }
     }
-    if (body.balance !== undefined && !isNaN(Number(body.balance))) {
-      updatePayload.balance = Number(body.balance);
-    }
+
+    updatePayload.balance = initialBalance;
 
     const updated = await upsertCustomer(telegramUserId, updatePayload);
 
@@ -110,7 +146,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// PATCH /api/admin/customers - Increase or decrease verification count
+// PATCH /api/admin/customers - Increase or decrease customer verification allocation
 export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null);
@@ -132,10 +168,59 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
+    let providerInfo = null;
+    if (updated.faydaApiKey) {
+      const pBal = await fetchProviderBalance(updated.faydaApiKey);
+      if (pBal && pBal.success) {
+        providerInfo = {
+          remainingPoints: pBal.points ?? pBal.remainingPoints ?? pBal.balance,
+          status: pBal.status || "active",
+        };
+      }
+    }
+
     return NextResponse.json({
       success: true,
       telegramUserId: updated.telegramUserId,
       newBalance: updated.balance,
+      providerLimit: providerInfo,
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Internal error";
+    return NextResponse.json({ success: false, message }, { status: 500 });
+  }
+}
+
+// DELETE /api/admin/customers - Remove a customer
+export async function DELETE(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    let userIdStr = searchParams.get("telegramUserId");
+    if (!userIdStr) {
+      const body = await req.json().catch(() => null);
+      userIdStr = body?.telegramUserId;
+    }
+
+    if (!userIdStr) {
+      return NextResponse.json(
+        { success: false, message: "telegramUserId is required" },
+        { status: 400 }
+      );
+    }
+
+    const telegramUserId = Number(userIdStr);
+    const success = await deleteCustomer(telegramUserId);
+
+    if (!success) {
+      return NextResponse.json(
+        { success: false, message: "Customer not found or already deleted" },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Customer ${telegramUserId} removed successfully`,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Internal error";

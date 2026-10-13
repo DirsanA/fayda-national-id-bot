@@ -36,15 +36,21 @@ export async function upsertCustomer(
     updatedAt: now,
   };
 
+  const setOnInsertData: any = {
+    telegramUserId,
+    createdAt: now,
+  };
+
+  // Only initialize balance on insert if it is not explicitly provided in $set
+  if (data.balance === undefined) {
+    setOnInsertData.balance = 0;
+  }
+
   await col.updateOne(
     { telegramUserId },
     {
       $set: updateData,
-      $setOnInsert: {
-        telegramUserId,
-        createdAt: now,
-        balance: data.balance ?? 0,
-      },
+      $setOnInsert: setOnInsertData,
     },
     { upsert: true }
   );
@@ -66,4 +72,12 @@ export async function adjustCustomerBalance(
     }
   );
   return col.findOne({ telegramUserId });
+}
+
+export async function deleteCustomer(
+  telegramUserId: number
+): Promise<boolean> {
+  const col = await getCustomersCollection();
+  const res = await col.deleteOne({ telegramUserId });
+  return res.deletedCount > 0;
 }

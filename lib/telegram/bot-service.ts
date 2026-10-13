@@ -127,12 +127,14 @@ export const MAIN_MENU_KEYBOARD = {
   persistent: true,
 };
 
-// Check Fayda Provider Balance for a specific key
-async function fetchFaydaBalance(apiKey?: string): Promise<any> {
-  const key = apiKey || getDefaultFaydaApiKey();
+// Check Fayda Provider Balance strictly for a customer's registered key
+async function fetchFaydaBalance(apiKey: string): Promise<any> {
+  if (!apiKey || typeof apiKey !== "string") {
+    throw new Error("No Fayda API key registered for customer.");
+  }
   const res = await fetch(`${FAYDA_BASE_URL}/balance`, {
     method: "GET",
-    headers: { "x-api-key": key },
+    headers: { "x-api-key": apiKey.trim() },
   });
   return res.json().catch(() => null);
 }
@@ -278,16 +280,18 @@ export async function sendTelegramAction(
   }
 }
 
-// Handle Fayda API: Send OTP
-async function requestFaydaOtp(fanNumber: string, customApiKey?: string) {
-  const apiKey = customApiKey || getDefaultFaydaApiKey();
+// Handle Fayda API: Send OTP strictly using customer's registered key
+async function requestFaydaOtp(fanNumber: string, apiKey: string) {
+  if (!apiKey || typeof apiKey !== "string") {
+    throw new Error("No Fayda API key registered for customer.");
+  }
   const cleanedFan = fanNumber.replace(/\s+/g, "");
 
   const res = await fetch(`${FAYDA_BASE_URL}/send-otp`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": apiKey,
+      "x-api-key": apiKey.trim(),
     },
     body: JSON.stringify({ fanNumber: cleanedFan }),
   });
@@ -299,9 +303,11 @@ async function requestFaydaOtp(fanNumber: string, customApiKey?: string) {
   return data;
 }
 
-// Handle Fayda API: Verify OTP
-async function verifyFaydaOtp(otp: string, fanNumber: string, session: string, customApiKey?: string) {
-  const apiKey = customApiKey || getDefaultFaydaApiKey();
+// Handle Fayda API: Verify OTP strictly using customer's registered key
+async function verifyFaydaOtp(otp: string, fanNumber: string, session: string, apiKey: string) {
+  if (!apiKey || typeof apiKey !== "string") {
+    throw new Error("No Fayda API key registered for customer.");
+  }
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 120000);
 
@@ -310,7 +316,7 @@ async function verifyFaydaOtp(otp: string, fanNumber: string, session: string, c
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": apiKey,
+        "x-api-key": apiKey.trim(),
       },
       body: JSON.stringify({
         otp: String(otp).trim(),
@@ -534,47 +540,66 @@ export async function handleTelegramUpdate(update: any) {
   }
 
   // Handle Balance Command
-  if (text === "/balance" || text === "💰 Balance" || text === "💰 Check Balance") {
+  const trimmedLower = text.trim().toLowerCase();
+  if (
+    text === "/balance" ||
+    text === "💰 Balance" ||
+    text === "💰 Check Balance" ||
+    trimmedLower === "balance" ||
+    trimmedLower === "/balance"
+  ) {
     await sendTelegramAction(chatId, "typing");
     try {
       // 1. Look up customer in MongoDB
       const customer = await findCustomerByTelegramId(userId).catch(() => null);
 
-      if (!customer) {
-        // Customer is not registered
-        await sendTelegramMessage(
-          chatId,
-          "ℹ️ *Access Unavailable*\n\n" +
-            "Your Telegram account (ID: `" +
-            userId +
-            "`) is not yet registered for verification access.\n\n" +
-            "💳 *To activate or top up:*\n" +
-            "Send your payment receipt screenshot directly to this bot, or contact @Dirsan_A.",
-          { reply_markup: MAIN_MENU_KEYBOARD }
-        );
-        return;
+      let currentBalance = 0;
+      let accountStatus = "Active";
+      let accountLabel = customer?.telegramUsername ? `@${customer.telegramUsername}` : `User ${userId}`;
+
+      if (customer) {
+        currentBalance = typeof customer.balance === "number" ? customer.balance : 0;
+
+        // If customer has an individual Fayda API key, query live provider points
+        if (customer.faydaApiKey) {
+          const providerData = await fetchFaydaBalance(customer.faydaApiKey).catch(() => null);
+          if (providerData) {
+            const rawPts =
+              providerData.points ??
+              providerData.remainingPoints ??
+              providerData.balance ??
+              providerData.credit;
+            if (rawPts !== undefined && rawPts !== null && !isNaN(Number(rawPts))) {
+              currentBalance = Number(rawPts);
+            }
+            if (providerData.status) accountStatus = String(providerData.status);
+            if (providerData.username) accountLabel = String(providerData.username);
+            // Sync database count with live count
+            await upsertCustomer(userId, { balance: currentBalance }).catch(() => {});
+          }
+        }
+      } else {
+        // Customer not yet registered in database
+        currentBalance = 0;
+        accountStatus = "Unregistered";
+        accountLabel = "New Customer";
       }
 
-      // Customer is registered: display their available verification count
       let balanceMsg =
         `💰 *Your Balance*\n\n` +
-        `Available verifications: *${customer.balance || 0}*`;
+        `Available verifications: *${currentBalance}*\n` +
+        `👤 Account: *${accountLabel}*\n` +
+        `📊 Status: *${accountStatus}*`;
 
-      // If customer has a dedicated Fayda API key registered, also display their provider balance
-      if (customer.faydaApiKey) {
-        const providerData = await fetchFaydaBalance(customer.faydaApiKey).catch(() => null);
-        const providerPoints =
-          providerData?.remainingPoints ??
-          providerData?.balance ??
-          providerData?.points;
-        if (providerPoints !== undefined) {
-          balanceMsg += `\n🔌 API Provider limit: *${providerPoints}* points`;
-        }
+      if (currentBalance <= 0) {
+        balanceMsg +=
+          `\n\n⚠️ *Your balance is 0.*\n` +
+          `To verify Fayda ID cards, please top up your account balance.`;
       }
 
       balanceMsg +=
-        `\n\n💳 *Need more verifications?*\n` +
-        `Tap *💳 Recharge (Upload Receipt)* or send your payment screenshot directly here anytime!`;
+        `\n\n💳 *How to Recharge:*\n` +
+        `Tap *💳 Recharge (Upload Receipt)* below or send your payment screenshot directly into this chat anytime!`;
 
       await sendTelegramMessage(chatId, balanceMsg, {
         reply_markup: MAIN_MENU_KEYBOARD,
@@ -582,7 +607,7 @@ export async function handleTelegramUpdate(update: any) {
     } catch {
       await sendTelegramMessage(
         chatId,
-        "⚠️ Unable to retrieve your balance at this moment. Please try again shortly.",
+        "💰 *Your Balance*\n\nAvailable verifications: *0*\n\n💳 Tap *💳 Recharge (Upload Receipt)* to add verifications.",
         { reply_markup: MAIN_MENU_KEYBOARD }
       );
     }
@@ -632,11 +657,61 @@ export async function handleTelegramUpdate(update: any) {
         return;
       }
 
+      const adminUsername = (process.env.ADMIN_TELEGRAM_USERNAME || "Dirsan_A").trim().replace(/^@/, "");
+
+      // Check customer registration and balance
+      const customer = await findCustomerByTelegramId(userId).catch(() => null);
+      if (!customer) {
+        clearSessionData(userId);
+        await sendTelegramMessage(
+          chatId,
+          `ℹ️ *Verification Access Unavailable*\n\nYour available verification balance is *0*.\n\n💳 *To get started:*\nTap *💳 Recharge (Upload Receipt)* below or contact @${adminUsername}.`,
+          { reply_markup: MAIN_MENU_KEYBOARD }
+        );
+        return;
+      }
+
+      let availablePoints = typeof customer.balance === "number" ? customer.balance : 0;
+      const effectiveKey = customer.faydaApiKey || process.env.FAYDA_API_KEY || "";
+
+      // Check live balance if customer has an individual key
+      if (customer.faydaApiKey) {
+        await sendTelegramAction(chatId, "typing");
+        const liveBal = await fetchFaydaBalance(customer.faydaApiKey).catch(() => null);
+        if (liveBal) {
+          const rawPts = liveBal.points ?? liveBal.remainingPoints ?? liveBal.balance ?? liveBal.credit;
+          if (rawPts !== undefined && rawPts !== null && !isNaN(Number(rawPts))) {
+            availablePoints = Number(rawPts);
+            await upsertCustomer(userId, { balance: availablePoints }).catch(() => {});
+          }
+        }
+      }
+
+      if (availablePoints <= 0) {
+        clearSessionData(userId);
+        await sendTelegramMessage(
+          chatId,
+          `⚠️ *Insufficient Verification Balance*\n\nYour available verification balance is *0*.\n\n💳 *To recharge:*\nTap *💳 Recharge (Upload Receipt)* below or send your payment screenshot directly into this chat anytime!`,
+          { reply_markup: MAIN_MENU_KEYBOARD }
+        );
+        return;
+      }
+
+      if (!effectiveKey) {
+        clearSessionData(userId);
+        await sendTelegramMessage(
+          chatId,
+          `⚠️ *API Configuration Missing*\n\nPlease contact @${adminUsername} to verify provider configuration.`,
+          { reply_markup: MAIN_MENU_KEYBOARD }
+        );
+        return;
+      }
+
       clearSessionData(userId);
       updateSession(userId, { state: "WAITING_FOR_FAN", chatId });
       await sendTelegramMessage(
         chatId,
-        "🪪 *Fayda National ID Verification*\n\nPlease enter your *16-digit Fayda FAN number* (e.g. `4952 8025 7094 3927` or without spaces):",
+        `🪪 *Fayda National ID Verification*\n\nAvailable points: *${availablePoints}*\n\nPlease enter your *16-digit Fayda FAN number* (e.g. \`4952 8025 7094 3927\` or without spaces):`,
         { reply_markup: MAIN_MENU_KEYBOARD }
       );
       return;
@@ -655,12 +730,32 @@ export async function handleTelegramUpdate(update: any) {
           return;
         }
 
-        // 1. Authorize customer verification balance & lookup customer API credential
+        const adminUsername = (process.env.ADMIN_TELEGRAM_USERNAME || "Dirsan_A").trim().replace(/^@/, "");
+
+        // Authorize customer verification balance & lookup customer individual API credential
         const customer = await findCustomerByTelegramId(userId).catch(() => null);
-        if (customer && typeof customer.balance === "number" && customer.balance <= 0) {
+        if (!customer || !customer.faydaApiKey) {
+          clearSessionData(userId);
           await sendTelegramMessage(
             chatId,
-            `⚠️ *Insufficient Verification Balance*\n\nYour available verification balance is *0*.\n\nPlease top up by sending your payment screenshot to this bot or contact @Dirsan_A.`,
+            "ℹ️ *Access Unavailable*\n\nYour account is not registered with active Fayda API credentials.",
+            { reply_markup: MAIN_MENU_KEYBOARD }
+          );
+          return;
+        }
+
+        const liveBal = await fetchFaydaBalance(customer.faydaApiKey).catch(() => null);
+        const rawPts = liveBal?.points ?? liveBal?.remainingPoints ?? liveBal?.balance ?? liveBal?.credit;
+        const pts = (rawPts !== undefined && rawPts !== null && !isNaN(Number(rawPts)))
+          ? Number(rawPts)
+          : (typeof customer.balance === "number" ? customer.balance : 0);
+
+        if (pts <= 0) {
+          clearSessionData(userId);
+          await upsertCustomer(userId, { balance: 0 }).catch(() => {});
+          await sendTelegramMessage(
+            chatId,
+            `⚠️ *Insufficient Verification Balance*\n\nYour available verification balance is *0*.\n\nPlease top up by sending your payment screenshot to this bot or contact @${adminUsername}.`,
             { reply_markup: MAIN_MENU_KEYBOARD }
           );
           return;
@@ -674,9 +769,8 @@ export async function handleTelegramUpdate(update: any) {
         await sendTelegramMessage(chatId, "⏳ Requesting OTP from Fayda system...");
 
         try {
-          // Use customer's individual API key if registered, otherwise fall back to server default
-          const customerApiKey = customer?.faydaApiKey || undefined;
-          const otpResponse = await requestFaydaOtp(cleanFan, customerApiKey);
+          // Strictly use customer's registered individual API key
+          const otpResponse = await requestFaydaOtp(cleanFan, customer.faydaApiKey);
 
           // Verify request is still active
           const current = getSession(userId, chatId);
@@ -755,15 +849,17 @@ export async function handleTelegramUpdate(update: any) {
 
         try {
           console.log(`[Bot] Verifying OTP for user ${userId}...`);
-          // Check for customer's individual API key if configured
+          // Look up customer's individual API key from database
           const customerRecord = await findCustomerByTelegramId(userId).catch(() => null);
-          const customerApiKey = customerRecord?.faydaApiKey || undefined;
+          if (!customerRecord || !customerRecord.faydaApiKey) {
+            throw new Error("Customer API credentials not found in database.");
+          }
 
           const verifyResponse = await verifyFaydaOtp(
             cleanOtp,
             session.fanNumber,
             session.faydaSession,
-            customerApiKey
+            customerRecord.faydaApiKey
           );
 
           // Verify request is still active
@@ -790,7 +886,7 @@ export async function handleTelegramUpdate(update: any) {
             `✅ *Verification Successful!* \n👤 *Name:* ${idData.fullNameEnglish} (${idData.fullNameAmharic})\n\nGenerating your high-resolution Front & Back cards...`
           );
 
-          // Render single combined card image (Front Left, Back Right, Zero paper background, 300 DPI, Original Color Photo)
+          // Render single combined card image
           console.log(`[Bot] Rendering combined side-by-side card buffer (Color)...`);
           const combinedBuf = await renderCombinedCardBuffer(idData, "color");
           console.log(`[Bot] Combined card buffer generated: ${combinedBuf.length} bytes`);
@@ -806,19 +902,17 @@ export async function handleTelegramUpdate(update: any) {
 
           clearInterval(actionTimer);
 
-          // Deduct 1 verification count from registered customer balance upon successful completion
-          if (customerRecord && typeof customerRecord.balance === "number" && customerRecord.balance > 0) {
-            await adjustCustomerBalance(userId, -1).catch((err) =>
-              console.error("[Customer Balance Deduct Error]:", err)
-            );
-          }
+          // Refresh live balance directly from provider using customer's key
+          const postBalData = await fetchFaydaBalance(customerRecord.faydaApiKey).catch(() => null);
+          const remainingPoints = postBalData?.points ?? (typeof customerRecord.balance === "number" ? Math.max(0, customerRecord.balance - 1) : 0);
+          await upsertCustomer(userId, { balance: remainingPoints }).catch(() => {});
 
           // Clean session state for user so they can start fresh anytime
           clearSessionData(userId);
 
           await sendTelegramMessage(
             chatId,
-            "🎉 *All done!* Your ID card has been delivered. Tap *🪪 Print ID Card* if you need to verify another ID.",
+            `🎉 *All done!* Your ID card has been delivered.\n💰 Remaining verifications: *${remainingPoints}*\n\nTap *🪪 Print ID Card* if you need to verify another ID.`,
             { reply_markup: MAIN_MENU_KEYBOARD }
           );
         } catch (err) {
