@@ -11,6 +11,6 @@ docs/
 *.zip
 
 # Environment variable files
-.env
-.env.local
-.env.*.local
+# .env
+# .env.local
+# .env.*.local
