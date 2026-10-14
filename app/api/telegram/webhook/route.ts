@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleTelegramUpdate } from "@/lib/telegram/bot-service";
 
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
 const processedUpdates = new Set<number>();
 
 export async function POST(req: NextRequest) {
@@ -44,11 +47,11 @@ export async function POST(req: NextRequest) {
 
     console.log(`[Telegram Webhook] Received update ID: ${updateId ?? "unknown"} (type: ${messageType})`);
 
-    // Process update in background to guarantee instant <50ms 200 OK acknowledgment to Telegram
-    // This prevents Telegram webhook timeouts and duplicate webhook retries while preserving full isolation.
-    handleTelegramUpdate(update).catch((handlerErr: unknown) => {
+    // In Vercel serverless environments, background promises are frozen as soon as a response is sent.
+    // Awaiting handleTelegramUpdate guarantees card generation, API calls, and Telegram replies complete safely.
+    await handleTelegramUpdate(update).catch((handlerErr: unknown) => {
       const msg = handlerErr instanceof Error ? handlerErr.message : String(handlerErr);
-      console.error(`[Telegram Webhook] Background error processing update ID ${updateId}:`, msg);
+      console.error(`[Telegram Webhook] Error processing update ID ${updateId}:`, msg);
     });
 
     return NextResponse.json({ ok: true });

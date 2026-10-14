@@ -1,8 +1,18 @@
 import https from "https";
 
-const token = process.env.TELEGRAM_BOT_TOKEN || "8950342083:AAFRorELVCZ_oUrkUCEppqmi4snagYLLML4";
-const url = "https://ascent-sway-recycler.ngrok-free.dev/api/telegram/webhook";
-const secret = process.env.TELEGRAM_WEBHOOK_SECRET || "your_secret_webhook_token_heresd";
+const token = process.env.TELEGRAM_BOT_TOKEN;
+if (!token) {
+  console.error("Error: TELEGRAM_BOT_TOKEN environment variable is required.");
+  process.exit(1);
+}
+
+// Allow passing the Vercel domain as a CLI argument: node scripts/register-webhook.mjs https://my-app.vercel.app
+const targetBase = process.argv[2] || process.env.VERCEL_URL || "https://ascent-sway-recycler.ngrok-free.dev";
+const baseUrl = targetBase.startsWith("http") ? targetBase : `https://${targetBase}`;
+const url = `${baseUrl.replace(/\/+$/, "")}/api/telegram/webhook`;
+const secret = (process.env.TELEGRAM_WEBHOOK_SECRET || "your_secret_webhook_token_heresd").trim();
+
+console.log(`Setting Telegram webhook for bot to: ${url}`);
 
 const postData = JSON.stringify({
   url: url,

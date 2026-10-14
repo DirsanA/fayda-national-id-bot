@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 const BASE_URL = "https://otp.affiliate.pro.et/api/v1";
 
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();

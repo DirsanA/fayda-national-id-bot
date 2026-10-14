@@ -7,3 +7,10 @@ docs/
 *.tsbuildinfo
 *.traineddata
 .sessions/
+.vercel/
+*.zip
+
+# Environment variable files
+.env
+.env.local
+.env.*.local

@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import os from "os";
 
 export type SessionState =
   | "IDLE"
@@ -45,8 +46,9 @@ const SESSION_TTL_MS = 10 * 60 * 1000;
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const MAX_REQUESTS_PER_WINDOW = 15;
 
-// File-based persistent session store for serverless & local development environments
-const STORAGE_DIR = path.join(process.cwd(), ".sessions");
+// File-based persistent session store for serverless & local development environments.
+// On Vercel / AWS Lambda, process.cwd() is read-only. We use os.tmpdir() so it works without crashing.
+const STORAGE_DIR = path.join(os.tmpdir(), "national_id_sessions");
 const SESSIONS_FILE = path.join(STORAGE_DIR, "telegram_sessions.json");
 
 function ensureStorageDir() {
@@ -55,7 +57,8 @@ function ensureStorageDir() {
       fs.mkdirSync(STORAGE_DIR, { recursive: true });
     }
   } catch (err) {
-    console.error("Failed to create session storage dir:", err);
+    // Non-fatal warning if /tmp creation fails; in-memory fallback will handle it
+    console.warn("Notice: Session storage dir creation skipped or in-memory fallback:", err);
   }
 }
 

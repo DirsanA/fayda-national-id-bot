@@ -16,25 +16,17 @@ declare global {
 
 export async function getMongoClient(): Promise<MongoClient> {
   if (!uri) {
-    throw new Error("db_url environment variable is missing in .env");
+    throw new Error("MONGODB_URI or db_url environment variable is missing in environment variables.");
   }
 
-  if (process.env.NODE_ENV === "development") {
-    if (!global._mongoClientPromise) {
-      client = new MongoClient(uri);
-      global._mongoClientPromise = client.connect().catch((err) => {
-        global._mongoClientPromise = undefined;
-        throw err;
-      });
-    }
-    return global._mongoClientPromise;
-  }
-
-  if (!clientPromise) {
+  if (!global._mongoClientPromise) {
     client = new MongoClient(uri);
-    clientPromise = client.connect();
+    global._mongoClientPromise = client.connect().catch((err) => {
+      global._mongoClientPromise = undefined;
+      throw err;
+    });
   }
-  return clientPromise;
+  return global._mongoClientPromise;
 }
 
 export async function getDb(): Promise<Db> {
