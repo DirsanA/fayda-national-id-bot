@@ -113,13 +113,14 @@ export async function findCustomerByTelegramId(
 
 export async function createCustomer(
   telegramUserId: number,
-  data: { telegramUsername?: string; balance: number }
+  data: { telegramUsername?: string; balance: number; faydaApiKey?: string }
 ): Promise<CustomerDocument> {
   const col = await getCustomersCollection();
   const now = new Date();
   const doc: CustomerDocument = {
     telegramUserId,
     telegramUsername: data.telegramUsername || undefined,
+    faydaApiKey: data.faydaApiKey || undefined,
     balance: Math.max(0, typeof data.balance === "number" ? data.balance : 0),
     usedCount: 0,
     createdAt: now,
@@ -132,7 +133,7 @@ export async function createCustomer(
 
 export async function updateCustomer(
   telegramUserId: number,
-  data: { telegramUsername?: string; balance?: number }
+  data: { telegramUsername?: string; balance?: number; faydaApiKey?: string }
 ): Promise<CustomerDocument | null> {
   customerCache.delete(telegramUserId);
   const col = await getCustomersCollection();
@@ -143,6 +144,9 @@ export async function updateCustomer(
   }
   if (typeof data.balance === "number") {
     updateFields.balance = Math.max(0, data.balance);
+  }
+  if (data.faydaApiKey !== undefined) {
+    updateFields.faydaApiKey = data.faydaApiKey || undefined;
   }
 
   return col.findOneAndUpdate(

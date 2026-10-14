@@ -827,8 +827,9 @@ export async function handleTelegramUpdate(update: any) {
         await sendTelegramMessage(chatId, "⏳ Requesting OTP from Fayda system...");
 
         try {
-          // Send OTP using shared server API key
-          const otpResponse = await requestFaydaOtp(cleanFan);
+          // Send OTP using customer's custom API key from database (if configured) or server default
+          const customerApiKey = customer?.faydaApiKey?.trim() || undefined;
+          const otpResponse = await requestFaydaOtp(cleanFan, customerApiKey);
 
           // Verify request is still active
           const current = getSession(userId, chatId);
@@ -908,11 +909,16 @@ export async function handleTelegramUpdate(update: any) {
         try {
           console.log(`[Bot] Verifying OTP for user ${userId}...`);
 
-          // Verify OTP using shared server API key
+          // Check customer API key from database if configured
+          const customerRecord = await findCustomerByTelegramId(userId).catch(() => null);
+          const customerApiKey = customerRecord?.faydaApiKey?.trim() || undefined;
+
+          // Verify OTP using customer's custom API key (if configured) or server default
           const verifyResponse = await verifyFaydaOtp(
             cleanOtp,
             session.fanNumber,
-            session.faydaSession
+            session.faydaSession,
+            customerApiKey
           );
 
           // Verify request is still active

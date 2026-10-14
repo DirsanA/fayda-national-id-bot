@@ -23,6 +23,8 @@ export async function GET(req: NextRequest) {
       return {
         telegramUserId: cust.telegramUserId,
         telegramUsername: cust.telegramUsername || null,
+        faydaApiKey: cust.faydaApiKey || null,
+        apiKey: cust.faydaApiKey || null,
         hasApiKey: Boolean(cust.faydaApiKey),
         maskedApiKey: cust.faydaApiKey
           ? `${cust.faydaApiKey.slice(0, 8)}...${cust.faydaApiKey.slice(-4)}`
@@ -158,6 +160,13 @@ export async function POST(req: NextRequest) {
         ? String(body.telegramUsername).replace(/^@/, "").trim() || undefined
         : undefined;
 
+    const cleanApiKey =
+      body.faydaApiKey !== undefined && body.faydaApiKey !== null
+        ? String(body.faydaApiKey).trim() || undefined
+        : body.apiKey !== undefined && body.apiKey !== null
+        ? String(body.apiKey).trim() || undefined
+        : undefined;
+
     // Acquire lock to guarantee concurrency safety and prevent exceeding balance pool
     const releaseLock = await acquireAdjustmentLock();
 
@@ -206,18 +215,21 @@ export async function POST(req: NextRequest) {
         customerResult = await updateCustomer(telegramUserId, {
           telegramUsername: cleanUsername,
           balance: rawBalance,
+          faydaApiKey: cleanApiKey,
         });
         if (!customerResult) {
           // If not found, upsert as fallback
           customerResult = await upsertCustomer(telegramUserId, {
             telegramUsername: cleanUsername,
             balance: rawBalance,
+            faydaApiKey: cleanApiKey,
           });
         }
       } else {
         customerResult = await createCustomer(telegramUserId, {
           telegramUsername: cleanUsername,
           balance: rawBalance,
+          faydaApiKey: cleanApiKey,
         });
       }
 
@@ -231,6 +243,8 @@ export async function POST(req: NextRequest) {
           telegramUserId: customerResult.telegramUserId,
           telegramUsername: customerResult.telegramUsername,
           balance: customerResult.balance,
+          faydaApiKey: customerResult.faydaApiKey || null,
+          apiKey: customerResult.faydaApiKey || null,
         },
       });
     } finally {
