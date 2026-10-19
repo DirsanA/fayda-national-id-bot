@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
           : null,
         balance,
         usedCount,
+        cardTemplate: cust.cardTemplate || "template1",
         providerLimit: {
           remainingPoints: balance,
           status: balance > 0 ? "active" : "exhausted",
@@ -167,6 +168,12 @@ export async function POST(req: NextRequest) {
         ? String(body.apiKey).trim() || undefined
         : undefined;
 
+    const validTemplates = ["template1", "template2", "template3"];
+    const cleanCardTemplate =
+      body.cardTemplate && validTemplates.includes(String(body.cardTemplate))
+        ? (body.cardTemplate as "template1" | "template2" | "template3")
+        : undefined;
+
     // Acquire lock to guarantee concurrency safety and prevent exceeding balance pool
     const releaseLock = await acquireAdjustmentLock();
 
@@ -216,6 +223,7 @@ export async function POST(req: NextRequest) {
           telegramUsername: cleanUsername,
           balance: rawBalance,
           faydaApiKey: cleanApiKey,
+          cardTemplate: cleanCardTemplate,
         });
         if (!customerResult) {
           // If not found, upsert as fallback
@@ -223,6 +231,7 @@ export async function POST(req: NextRequest) {
             telegramUsername: cleanUsername,
             balance: rawBalance,
             faydaApiKey: cleanApiKey,
+            cardTemplate: cleanCardTemplate,
           });
         }
       } else {
@@ -230,6 +239,7 @@ export async function POST(req: NextRequest) {
           telegramUsername: cleanUsername,
           balance: rawBalance,
           faydaApiKey: cleanApiKey,
+          cardTemplate: cleanCardTemplate,
         });
       }
 
@@ -245,6 +255,7 @@ export async function POST(req: NextRequest) {
           balance: customerResult.balance,
           faydaApiKey: customerResult.faydaApiKey || null,
           apiKey: customerResult.faydaApiKey || null,
+          cardTemplate: customerResult.cardTemplate || "template1",
         },
       });
     } finally {

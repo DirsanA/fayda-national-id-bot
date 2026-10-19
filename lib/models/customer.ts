@@ -7,6 +7,7 @@ export interface CustomerDocument {
   faydaApiKey?: string;
   balance: number; // Admin-managed verification quota
   usedCount?: number; // Total verifications consumed
+  cardTemplate?: "template1" | "template2" | "template3";
   createdAt: Date;
   updatedAt: Date;
 }
@@ -113,7 +114,12 @@ export async function findCustomerByTelegramId(
 
 export async function createCustomer(
   telegramUserId: number,
-  data: { telegramUsername?: string; balance: number; faydaApiKey?: string }
+  data: {
+    telegramUsername?: string;
+    balance: number;
+    faydaApiKey?: string;
+    cardTemplate?: "template1" | "template2" | "template3";
+  }
 ): Promise<CustomerDocument> {
   const col = await getCustomersCollection();
   const now = new Date();
@@ -123,6 +129,7 @@ export async function createCustomer(
     faydaApiKey: data.faydaApiKey || undefined,
     balance: Math.max(0, typeof data.balance === "number" ? data.balance : 0),
     usedCount: 0,
+    cardTemplate: data.cardTemplate || "template1",
     createdAt: now,
     updatedAt: now,
   };
@@ -133,7 +140,12 @@ export async function createCustomer(
 
 export async function updateCustomer(
   telegramUserId: number,
-  data: { telegramUsername?: string; balance?: number; faydaApiKey?: string }
+  data: {
+    telegramUsername?: string;
+    balance?: number;
+    faydaApiKey?: string;
+    cardTemplate?: "template1" | "template2" | "template3";
+  }
 ): Promise<CustomerDocument | null> {
   customerCache.delete(telegramUserId);
   const col = await getCustomersCollection();
@@ -147,6 +159,9 @@ export async function updateCustomer(
   }
   if (data.faydaApiKey !== undefined) {
     updateFields.faydaApiKey = data.faydaApiKey || undefined;
+  }
+  if (data.cardTemplate !== undefined) {
+    updateFields.cardTemplate = data.cardTemplate;
   }
 
   return col.findOneAndUpdate(
@@ -295,4 +310,21 @@ export async function deleteCustomer(
   const res = await deleteCustomerAndRefund(telegramUserId);
   return res.deleted;
 }
+
+export async function updateCustomerCardTemplate(
+  telegramUserId: number,
+  cardTemplate: "template1" | "template2" | "template3"
+): Promise<CustomerDocument | null> {
+  customerCache.delete(telegramUserId);
+  const col = await getCustomersCollection();
+  const now = new Date();
+  return col.findOneAndUpdate(
+    { telegramUserId },
+    {
+      $set: { cardTemplate, updatedAt: now },
+    },
+    { returnDocument: "after" }
+  );
+}
+
 

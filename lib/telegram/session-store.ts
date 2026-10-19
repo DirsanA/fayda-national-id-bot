@@ -23,6 +23,7 @@ export interface UserSession {
   requestCount: number;
   lastRequestTime: number;
   activeRequestId?: string;
+  cardTemplate?: "template1" | "template2" | "template3";
 }
 
 // In-memory mutex locks per user to prevent concurrent race conditions

@@ -3,6 +3,7 @@ import {
   renderFrontCardBuffer,
   renderBackCardBuffer,
   renderCombinedCardBuffer,
+  CardTemplateId,
 } from "@/lib/telegram/card-renderer";
 import {
   getSession,
@@ -17,6 +18,7 @@ import {
   adjustCustomerBalance,
   recordCustomerVerificationUsage,
   upsertCustomer,
+  updateCustomerCardTemplate,
 } from "@/lib/models/customer";
 
 const TELEGRAM_API_BASE = "https://api.telegram.org";
@@ -172,8 +174,8 @@ function buildInsufficientBalanceMessage(userId: number): string {
 export const MAIN_MENU_KEYBOARD = {
   keyboard: [
     [{ text: "🪪 Print ID Card" }, { text: "💰 Balance" }],
-    [{ text: "💳 Recharge (Upload Receipt)" }, { text: "❓ Help" }],
-    [{ text: "❌ Cancel" }],
+    [{ text: "🎨 Card Template" }, { text: "💳 Recharge (Upload Receipt)" }],
+    [{ text: "❓ Help" }, { text: "❌ Cancel" }],
   ],
   resize_keyboard: true,
   persistent: true,
@@ -259,6 +261,26 @@ export async function sendTelegramMessage(
   } catch (err) {
     console.error(`[Telegram sendMessage failed to chat ${chatId}]:`, err);
     return null;
+  }
+}
+
+// Low-level Telegram API helper: answerCallbackQuery
+export async function answerTelegramCallbackQuery(
+  callbackQueryId: string,
+  text?: string
+) {
+  try {
+    const token = getBotToken();
+    await fetchWithRetry(`${TELEGRAM_API_BASE}/bot${token}/answerCallbackQuery`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        callback_query_id: callbackQueryId,
+        text,
+      }),
+    });
+  } catch (err) {
+    console.error(`[Telegram answerCallbackQuery failed]:`, err);
   }
 }
 
@@ -562,6 +584,39 @@ async function forwardPaymentScreenshotToAdmin(
 
 // Main Telegram Update Handler
 export async function handleTelegramUpdate(update: any) {
+  // Support callback queries (e.g. from inline keyboard for template selection)
+  if (update?.callback_query) {
+    const cb = update.callback_query;
+    const cbId = cb.id;
+    const cbData = cb.data;
+    const cbUserId = cb.from?.id;
+    const cbChatId = cb.message?.chat?.id;
+
+    if (cbData && cbData.startsWith("set_template:")) {
+      const chosen = cbData.split(":")[1] as CardTemplateId;
+      if (["template1", "template2", "template3"].includes(chosen)) {
+        await updateCustomerCardTemplate(cbUserId, chosen).catch(() => null);
+        updateSession(cbUserId, { cardTemplate: chosen });
+        await answerTelegramCallbackQuery(cbId, `Selected ${chosen.toUpperCase()}`);
+
+        const templateNames: Record<string, string> = {
+          template1: "Template 1 (Classic Standard)",
+          template2: "Template 2 (Modern Blue Header)",
+          template3: "Template 3 (Compact Layout)",
+        };
+
+        if (cbChatId) {
+          await sendTelegramMessage(
+            cbChatId,
+            `🎨 *Template Updated!*\n\nYour ID cards will now be rendered using *${templateNames[chosen] || chosen}*.\n\nTap *🪪 Print ID Card* to generate cards.`,
+            { reply_markup: MAIN_MENU_KEYBOARD }
+          );
+        }
+      }
+      return;
+    }
+  }
+
   const message = update?.message || update?.edited_message;
   if (!message) return;
 
@@ -630,11 +685,61 @@ export async function handleTelegramUpdate(update: any) {
       "ℹ️ *Menu & Commands:*\n\n" +
         "• *🪪 Print ID Card* (`/start`) - Verify FAN and generate print-ready ID cards\n" +
         "• *💰 Balance* (`/balance`) - View your remaining verification count\n" +
+        "• *🎨 Card Template* (`/template`) - Switch card layout style\n" +
         "• *💳 Recharge (Upload Receipt)* - Instructions to top up your balance\n" +
         "• *❌ Cancel* (`/cancel`) - Cancel current active session\n" +
         "• *❓ Help* (`/help`) - View this help message\n\n" +
         "💡 *How to Recharge:* Transfer your payment and send the payment screenshot or PDF receipt directly into this chat anytime.",
       { reply_markup: MAIN_MENU_KEYBOARD }
+    );
+    return;
+  }
+
+  // Handle Card Template Selection Command
+  const isTemplateCmd =
+    text === "🎨 Card Template" ||
+    text === "/template" ||
+    text === "/templates" ||
+    text.toLowerCase() === "template";
+
+  if (isTemplateCmd) {
+    const customer = await findCustomerByTelegramId(userId).catch(() => null);
+    const session = getSession(userId, chatId);
+    const currentTemplate = customer?.cardTemplate || session.cardTemplate || "template1";
+
+    const templateNames: Record<string, string> = {
+      template1: "Template 1 (Classic Standard)",
+      template2: "Template 2 (Modern Blue Header)",
+      template3: "Template 3 (Compact Layout)",
+    };
+
+    const templateMarkup = {
+      inline_keyboard: [
+        [
+          {
+            text: `${currentTemplate === "template1" ? "✅ " : ""}1. Classic Standard`,
+            callback_data: "set_template:template1",
+          },
+        ],
+        [
+          {
+            text: `${currentTemplate === "template2" ? "✅ " : ""}2. Modern Blue`,
+            callback_data: "set_template:template2",
+          },
+        ],
+        [
+          {
+            text: `${currentTemplate === "template3" ? "✅ " : ""}3. Compact Minimal`,
+            callback_data: "set_template:template3",
+          },
+        ],
+      ],
+    };
+
+    await sendTelegramMessage(
+      chatId,
+      `🎨 *Card Template Selection*\n\nCurrent layout: *${templateNames[currentTemplate] || "Template 1"}*\n\nSelect which template you'd like to use for your printed ID cards:`,
+      { reply_markup: templateMarkup }
     );
     return;
   }
@@ -945,9 +1050,10 @@ export async function handleTelegramUpdate(update: any) {
             `✅ *Verification Successful!* \n👤 *Name:* ${idData.fullNameEnglish} (${idData.fullNameAmharic})\n\nGenerating your high-resolution Front & Back cards...`
           );
 
-          // Render single combined card image
-          console.log(`[Bot] Rendering combined side-by-side card buffer (Color)...`);
-          const combinedBuf = await renderCombinedCardBuffer(idData, "color");
+          // Render single combined card image using customer's selected template
+          const selectedTemplate: CardTemplateId = customerRecord?.cardTemplate || session.cardTemplate || "template1";
+          console.log(`[Bot] Rendering combined side-by-side card buffer (Color, Template: ${selectedTemplate})...`);
+          const combinedBuf = await renderCombinedCardBuffer(idData, "color", selectedTemplate);
           console.log(`[Bot] Combined card buffer generated: ${combinedBuf.length} bytes`);
 
           // Send high-resolution combined PNG directly as a downloadable document

@@ -8,6 +8,7 @@ interface Customer {
   hasApiKey: boolean;
   maskedApiKey?: string;
   balance: number;
+  cardTemplate?: "template1" | "template2" | "template3";
   providerLimit?: {
     remainingPoints: string | number;
     status: string;
@@ -31,6 +32,7 @@ export default function AdminPage() {
   const [telegramUserId, setTelegramUserId] = useState("");
   const [telegramUsername, setTelegramUsername] = useState("");
   const [initialBalance, setInitialBalance] = useState("0");
+  const [cardTemplate, setCardTemplate] = useState<"template1" | "template2" | "template3">("template1");
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [adjustingId, setAdjustingId] = useState<number | null>(null);
@@ -109,6 +111,7 @@ export default function AdminPage() {
     setTelegramUserId("");
     setTelegramUsername("");
     setInitialBalance("0");
+    setCardTemplate("template1");
     setError(null);
     const formEl = document.getElementById("customer-form-card");
     if (formEl) formEl.scrollIntoView({ behavior: "smooth" });
@@ -119,6 +122,7 @@ export default function AdminPage() {
     setTelegramUserId(String(customer.telegramUserId));
     setTelegramUsername(customer.telegramUsername || "");
     setInitialBalance(String(customer.balance));
+    setCardTemplate(customer.cardTemplate || "template1");
     setError(null);
     setSuccessMessage(null);
     const formEl = document.getElementById("customer-form-card");
@@ -228,6 +232,7 @@ export default function AdminPage() {
         telegramUserId: idNum,
         telegramUsername: telegramUsername.trim() || undefined,
         balance: balNum,
+        cardTemplate,
         isUpdate: isEditing,
       };
 
@@ -585,7 +590,7 @@ export default function AdminPage() {
           </div>
 
           <form onSubmit={handleRegisterCustomer} className="space-y-4">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-300">
                   Telegram Numeric ID <span className="text-red-400">*</span>
@@ -624,12 +629,30 @@ export default function AdminPage() {
                   className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-base sm:text-sm text-emerald-400 font-semibold placeholder-slate-600 focus:border-emerald-500 focus:outline-none transition-colors"
                 />
                 <p className="mt-1 text-[11px] text-slate-500">
-                  Verification balance allocated to this user.
+                  Allocated balance.
                   {remainingForDistribution !== null && (
                     <span className="block sm:inline sm:ml-1 text-emerald-400/90 font-medium">
-                      ({remainingForDistribution} distributable calls remaining)
+                      ({remainingForDistribution} remaining)
                     </span>
                   )}
+                </p>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-300">
+                  Default Card Template
+                </label>
+                <select
+                  value={cardTemplate}
+                  onChange={(e) => setCardTemplate(e.target.value as any)}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-base sm:text-sm text-white focus:border-emerald-500 focus:outline-none transition-colors"
+                >
+                  <option value="template1">Template 1 (Classic Standard)</option>
+                  <option value="template2">Template 2 (Modern Blue)</option>
+                  <option value="template3">Template 3 (Compact Layout)</option>
+                </select>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Assigned ID card layout.
                 </p>
               </div>
             </div>
@@ -800,6 +823,9 @@ export default function AdminPage() {
                             @{c.telegramUsername}
                           </span>
                         )}
+                        <span className="rounded bg-slate-800/90 border border-slate-700 px-1.5 py-0.5 text-[10px] font-medium text-cyan-400">
+                          {c.cardTemplate === "template2" ? "T2" : c.cardTemplate === "template3" ? "T3" : "T1"}
+                        </span>
                       </div>
                       <div className="text-right">
                         <span className="text-[10px] uppercase text-slate-500 font-medium block">
@@ -872,6 +898,7 @@ export default function AdminPage() {
                     <tr>
                       <th className="px-3 lg:px-4 py-3">Telegram ID</th>
                       <th className="px-3 lg:px-4 py-3">Username</th>
+                      <th className="px-3 lg:px-4 py-3">Card Template</th>
                       <th className="px-3 lg:px-4 py-3">Available Balance</th>
                       <th className="px-3 lg:px-4 py-3 text-center">Adjust Count</th>
                       <th className="px-3 lg:px-4 py-3 text-right">Actions</th>
@@ -885,6 +912,11 @@ export default function AdminPage() {
                         </td>
                         <td className="px-3 lg:px-4 py-3.5">
                           {c.telegramUsername ? `@${c.telegramUsername}` : "-"}
+                        </td>
+                        <td className="px-3 lg:px-4 py-3.5">
+                          <span className="inline-flex items-center rounded-md bg-slate-800 border border-slate-700 px-2 py-0.5 text-xs font-medium text-cyan-300">
+                            {c.cardTemplate === "template2" ? "Template 2" : c.cardTemplate === "template3" ? "Template 3" : "Template 1"}
+                          </span>
                         </td>
                         <td className="px-3 lg:px-4 py-3.5 font-semibold text-white">
                           <span className="text-base text-emerald-400 font-bold">{c.balance}</span> verifications

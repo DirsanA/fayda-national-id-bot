@@ -89,27 +89,72 @@ function drawCode128Barcode(
   });
 }
 
+export type CardTemplateId = "template1" | "template2" | "template3";
+
+const TEMPLATE_CONFIG: Record<CardTemplateId, { front: string; back: string }> = {
+  template1: {
+    front: "card-front-template.png",
+    back: "card-back-template.png",
+  },
+  template2: {
+    front: "front2.png",
+    back: "back2.png",
+  },
+  template3: {
+    front: "front3.png",
+    back: "back3.png",
+  },
+};
+
 // In-memory cache for static card template images to eliminate disk I/O on every render
-let cachedFrontTemplateImg: any = null;
-let cachedBackTemplateImg: any = null;
+const frontTemplateCache = new Map<CardTemplateId, any>();
+const backTemplateCache = new Map<CardTemplateId, any>();
 
-async function getFrontTemplateImage(): Promise<any> {
-  if (cachedFrontTemplateImg) return cachedFrontTemplateImg;
-  const templatePath = path.join(process.cwd(), "public", "assets", "card-front-template.png");
-  if (fs.existsSync(templatePath)) {
-    cachedFrontTemplateImg = await loadImage(templatePath);
+async function getFrontTemplateImage(templateId: CardTemplateId = "template1"): Promise<any> {
+  const effectiveId: CardTemplateId = TEMPLATE_CONFIG[templateId] ? templateId : "template1";
+  if (frontTemplateCache.has(effectiveId)) {
+    return frontTemplateCache.get(effectiveId);
   }
-  return cachedFrontTemplateImg;
+  const cfg = TEMPLATE_CONFIG[effectiveId];
+  const templatePath = path.join(process.cwd(), "public", "assets", cfg.front);
+  if (fs.existsSync(templatePath)) {
+    const img = await loadImage(templatePath);
+    frontTemplateCache.set(effectiveId, img);
+    return img;
+  }
+  if (effectiveId !== "template1") {
+    return getFrontTemplateImage("template1");
+  }
+  return null;
 }
 
-async function getBackTemplateImage(): Promise<any> {
-  if (cachedBackTemplateImg) return cachedBackTemplateImg;
-  const templatePath = path.join(process.cwd(), "public", "assets", "card-back-template.png");
-  if (fs.existsSync(templatePath)) {
-    cachedBackTemplateImg = await loadImage(templatePath);
+async function getBackTemplateImage(templateId: CardTemplateId = "template1"): Promise<any> {
+  const effectiveId: CardTemplateId = TEMPLATE_CONFIG[templateId] ? templateId : "template1";
+  if (backTemplateCache.has(effectiveId)) {
+    return backTemplateCache.get(effectiveId);
   }
-  return cachedBackTemplateImg;
+  const cfg = TEMPLATE_CONFIG[effectiveId];
+  const templatePath = path.join(process.cwd(), "public", "assets", cfg.back);
+  if (fs.existsSync(templatePath)) {
+    const img = await loadImage(templatePath);
+    backTemplateCache.set(effectiveId, img);
+    return img;
+  }
+  if (effectiveId !== "template1") {
+    return getBackTemplateImage("template1");
+  }
+  return null;
 }
+
+// Background prewarm to guarantee instant 0ms disk latency on any template
+export function prewarmTemplates() {
+  const ids: CardTemplateId[] = ["template1", "template2", "template3"];
+  for (const id of ids) {
+    getFrontTemplateImage(id).catch(() => {});
+    getBackTemplateImage(id).catch(() => {});
+  }
+}
+prewarmTemplates();
 
 async function loadServerImage(src: string): Promise<any> {
   if (!src) return null;
@@ -159,14 +204,15 @@ export type BotPhotoStyle = "bw" | "color";
 
 export async function renderFrontCardCanvas(
   data: EthiopianIdData,
-  photoStyle: BotPhotoStyle = "bw"
+  photoStyle: BotPhotoStyle = "bw",
+  templateId: CardTemplateId = "template1"
 ): Promise<any> {
   const canvas = createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
   const ctx = canvas.getContext("2d");
   ctx.imageSmoothingEnabled = true;
 
-  // 1. Draw front template (retrieved from memory cache)
-  const templateImg = await getFrontTemplateImage();
+  // 1. Draw front template (retrieved from in-memory cache)
+  const templateImg = await getFrontTemplateImage(templateId);
   if (templateImg) {
     ctx.drawImage(templateImg, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }
@@ -193,37 +239,93 @@ export async function renderFrontCardCanvas(
 
   // 3. Demographic text - Clean and sharp with NotoSansEthiopic
   ctx.fillStyle = "#020617";
-  ctx.font = "bold 26px NotoSansEthiopic, Arial, sans-serif";
-  ctx.fillText(data.fullNameAmharic, 418, 207);
-
-  ctx.font = "bold 24px Arial, sans-serif";
-  ctx.fillText(data.fullNameEnglish, 418, 250);
-
   const dobGregFormatted = formatGregorianDate(data.dateOfBirthGreg);
-  ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
-  ctx.fillText(`${data.dateOfBirthEth} | ${dobGregFormatted}`, 418, 334);
-
-  ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
-  ctx.fillText(`${data.sexAmharic} | ${data.sexEnglish}`, 418, 405);
-
   const expiryGregFormatted = formatGregorianDate(data.dateOfExpiryGreg);
-  ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
-  ctx.fillText(`${data.dateOfExpiryEth} | ${expiryGregFormatted}`, 418, 468);
 
-  // 4. Barcode box and FAN
-  const barcodeBoxX = 456;
-  const barcodeBoxY = 496;
-  const barcodeBoxW = 328;
+  if (templateId === "template1") {
+    ctx.font = "bold 26px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(data.fullNameAmharic, 418, 207);
 
-  ctx.fillStyle = "#020617";
-  ctx.font = "bold 22px monospace";
-  ctx.textAlign = "center";
-  ctx.fillText(data.fanNumber, barcodeBoxX + barcodeBoxW / 2, barcodeBoxY + 26);
-  ctx.textAlign = "left";
+    ctx.font = "bold 24px Arial, sans-serif";
+    ctx.fillText(data.fullNameEnglish, 418, 250);
 
+    ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.dateOfBirthEth} | ${dobGregFormatted}`, 418, 334);
+
+    ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.sexAmharic} | ${data.sexEnglish}`, 418, 405);
+
+    ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.dateOfExpiryEth} | ${expiryGregFormatted}`, 418, 468);
+
+    // Barcode box and FAN
+    const barcodeBoxX = 456;
+    const barcodeBoxY = 496;
+    const barcodeBoxW = 328;
+
+    ctx.fillStyle = "#020617";
+    ctx.font = "bold 22px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(data.fanNumber, barcodeBoxX + barcodeBoxW / 2, barcodeBoxY + 26);
+    ctx.textAlign = "left";
     drawCode128Barcode(ctx, data.fanNumber, barcodeBoxX + 10, barcodeBoxY + 34, barcodeBoxW - 20, 52);
+  } else if (templateId === "template2") {
+    ctx.font = "bold 26px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(data.fullNameAmharic, 418, 208);
 
-  // 5. Ghost photo (re-use already decoded portrait drawable)
+    ctx.font = "bold 24px Arial, sans-serif";
+    ctx.fillText(data.fullNameEnglish, 418, 245);
+
+    ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.dateOfBirthEth} | ${dobGregFormatted}`, 418, 325);
+
+    ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.sexAmharic} | ${data.sexEnglish}`, 418, 405);
+
+    ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.dateOfExpiryEth} | ${expiryGregFormatted}`, 418, 485);
+
+    // Barcode box and FAN
+    const barcodeBoxX = 450;
+    const barcodeBoxY = 515;
+    const barcodeBoxW = 380;
+
+    ctx.fillStyle = "#020617";
+    ctx.font = "bold 22px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(data.fanNumber, barcodeBoxX + barcodeBoxW / 2, barcodeBoxY + 26);
+    ctx.textAlign = "left";
+    drawCode128Barcode(ctx, data.fanNumber, barcodeBoxX + 15, barcodeBoxY + 32, barcodeBoxW - 30, 48);
+  } else if (templateId === "template3") {
+    ctx.font = "bold 26px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(data.fullNameAmharic, 418, 190);
+
+    ctx.font = "bold 24px Arial, sans-serif";
+    ctx.fillText(data.fullNameEnglish, 418, 228);
+
+    ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.dateOfBirthEth} | ${dobGregFormatted}`, 418, 300);
+
+    ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.sexAmharic} | ${data.sexEnglish}`, 418, 380);
+
+    ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.dateOfExpiryEth} | ${expiryGregFormatted}`, 418, 468);
+
+    // Barcode box and FAN
+    const barcodeBoxX = 445;
+    const barcodeBoxY = 490;
+    const barcodeBoxW = 275;
+
+    ctx.fillStyle = "#020617";
+    ctx.font = "bold 20px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(data.fanNumber, barcodeBoxX + barcodeBoxW / 2, barcodeBoxY + 24);
+    ctx.textAlign = "left";
+    drawCode128Barcode(ctx, data.fanNumber, barcodeBoxX + 10, barcodeBoxY + 30, barcodeBoxW - 20, 52);
+  }
+
+  // 4. Ghost photo (re-use already decoded portrait drawable)
   if (photoDrawable) {
     ctx.save();
     ctx.globalAlpha = 0.75;
@@ -233,7 +335,7 @@ export async function renderFrontCardCanvas(
     ctx.restore();
   }
 
-  // 6. Vertical issue date on left margin
+  // 5. Vertical issue date on left margin
   ctx.save();
   ctx.translate(38, 605);
   ctx.rotate(-Math.PI / 2);
@@ -261,79 +363,158 @@ export async function renderFrontCardCanvas(
 
 export async function renderFrontCardBuffer(
   data: EthiopianIdData,
-  photoStyle: BotPhotoStyle = "bw"
+  photoStyle: BotPhotoStyle = "bw",
+  templateId: CardTemplateId = "template1"
 ): Promise<Buffer> {
-  const canvas = await renderFrontCardCanvas(data, photoStyle);
+  const canvas = await renderFrontCardCanvas(data, photoStyle, templateId);
   return canvas.toBuffer("image/png");
 }
 
-export async function renderBackCardCanvas(data: EthiopianIdData): Promise<any> {
+export async function renderBackCardCanvas(
+  data: EthiopianIdData,
+  templateId: CardTemplateId = "template1"
+): Promise<any> {
   const canvas = createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
   const ctx = canvas.getContext("2d");
   ctx.imageSmoothingEnabled = true;
 
-  // 1. Draw back template (retrieved from memory cache)
-  const templateImg = await getBackTemplateImage();
+  // 1. Draw back template (retrieved from in-memory cache)
+  const templateImg = await getBackTemplateImage(templateId);
   if (templateImg) {
     ctx.drawImage(templateImg, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }
 
-  // 2. Demographic text - Clean and sharp with NotoSansEthiopic
+  // 2. Demographic text and codes according to template
   ctx.fillStyle = "#020617";
-  ctx.font = "bold 25px Arial, sans-serif";
-  ctx.fillText(data.phoneNumber, 40, 110);
-
-  ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
-  ctx.fillText(`${data.nationalityAmharic} | ${data.nationalityEnglish}`, 40, 194);
-
-  ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
-  ctx.fillText(data.regionAmharic, 40, 258);
-  ctx.font = "bold 21px Arial, sans-serif";
-  ctx.fillText(data.regionEnglish, 40, 293);
-
-  ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
-  ctx.fillText(data.subcityAmharic, 40, 330);
-  ctx.font = "bold 21px Arial, sans-serif";
-  ctx.fillText(data.subcityEnglish, 40, 359);
-
-  ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
-  ctx.fillText(data.woredaAmharic, 40, 395);
-  ctx.font = "bold 21px Arial, sans-serif";
-  ctx.fillText(data.woredaEnglish, 40, 430);
-
-  // 3. FIN Number inside the FIN box
-  ctx.fillStyle = "#020617";
-  ctx.font = "bold 22px Arial, monospace";
-  ctx.fillText(`FIN  ${data.finNumber}`, 104, 546);
-
-  // 4. SN Number inside SN badge
-  ctx.fillStyle = "#020617";
-  ctx.font = "bold 19px Arial, monospace";
-  ctx.fillText(data.serialNumber || "65501482", 835, 597);
-
-  // 5. QR Code
   const qrSource = data.qrCodeUrl || "/assets/target-qr.png";
   const qrImg = await loadServerImage(qrSource);
-  if (qrImg) {
-    ctx.drawImage(qrImg, 462, 47, 490, 490);
+
+  if (templateId === "template1") {
+    ctx.font = "bold 25px Arial, sans-serif";
+    ctx.fillText(data.phoneNumber, 40, 110);
+
+    ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.nationalityAmharic} | ${data.nationalityEnglish}`, 40, 194);
+
+    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(data.regionAmharic, 40, 258);
+    ctx.font = "bold 21px Arial, sans-serif";
+    ctx.fillText(data.regionEnglish, 40, 293);
+
+    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(data.subcityAmharic, 40, 330);
+    ctx.font = "bold 21px Arial, sans-serif";
+    ctx.fillText(data.subcityEnglish, 40, 359);
+
+    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(data.woredaAmharic, 40, 395);
+    ctx.font = "bold 21px Arial, sans-serif";
+    ctx.fillText(data.woredaEnglish, 40, 430);
+
+    // FIN Number inside FIN box
+    ctx.fillStyle = "#020617";
+    ctx.font = "bold 22px Arial, monospace";
+    ctx.fillText(`FIN  ${data.finNumber}`, 104, 546);
+
+    // SN Number inside SN badge
+    ctx.fillStyle = "#020617";
+    ctx.font = "bold 19px Arial, monospace";
+    ctx.fillText(data.serialNumber || "65501482", 835, 597);
+
+    // QR Code
+    if (qrImg) {
+      ctx.drawImage(qrImg, 462, 47, 490, 490);
+    }
+  } else if (templateId === "template2") {
+    ctx.font = "bold 25px Arial, sans-serif";
+    ctx.fillText(data.phoneNumber, 40, 95);
+
+    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(data.regionAmharic, 40, 250);
+    ctx.font = "bold 21px Arial, sans-serif";
+    ctx.fillText(data.regionEnglish, 40, 282);
+
+    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(data.subcityAmharic, 40, 315);
+    ctx.font = "bold 21px Arial, sans-serif";
+    ctx.fillText(data.subcityEnglish, 40, 345);
+
+    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(data.woredaAmharic, 40, 380);
+    ctx.font = "bold 21px Arial, sans-serif";
+    ctx.fillText(data.woredaEnglish, 40, 412);
+
+    // FIN Number inside FIN box (FIN prefix is already on template2)
+    ctx.font = "bold 22px Arial, monospace";
+    ctx.fillText(data.finNumber, 175, 548);
+
+    // SN Number inside SN badge
+    ctx.font = "bold 19px Arial, monospace";
+    ctx.fillText(data.serialNumber || "65501482", 850, 612);
+
+    // QR Code with clean rounded white backdrop for 100% scan reliability
+    if (qrImg) {
+      ctx.fillStyle = "#FFFFFF";
+      drawRoundedRect(ctx, 452, 38, 506, 506, 12);
+      ctx.fill();
+      ctx.drawImage(qrImg, 460, 46, 490, 490);
+    }
+  } else if (templateId === "template3") {
+    ctx.font = "bold 25px Arial, sans-serif";
+    ctx.fillText(data.phoneNumber, 35, 140);
+
+    ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.nationalityAmharic} | ${data.nationalityEnglish}`, 35, 245);
+
+    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(data.regionAmharic, 35, 330);
+    ctx.font = "bold 21px Arial, sans-serif";
+    ctx.fillText(data.regionEnglish, 35, 360);
+
+    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(data.subcityAmharic, 35, 390);
+    ctx.font = "bold 21px Arial, sans-serif";
+    ctx.fillText(data.subcityEnglish, 35, 418);
+
+    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(data.woredaAmharic, 35, 448);
+    ctx.font = "bold 21px Arial, sans-serif";
+    ctx.fillText(data.woredaEnglish, 35, 478);
+
+    // FIN Number inside FIN box
+    ctx.font = "bold 22px Arial, monospace";
+    ctx.fillText(`FIN  ${data.finNumber}`, 104, 562);
+
+    // SN Number inside SN badge
+    ctx.font = "bold 19px Arial, monospace";
+    ctx.fillText(data.serialNumber || "65501482", 825, 620);
+
+    // QR Code
+    if (qrImg) {
+      ctx.drawImage(qrImg, 455, 45, 490, 490);
+    }
   }
 
   return canvas;
 }
 
-export async function renderBackCardBuffer(data: EthiopianIdData): Promise<Buffer> {
-  const canvas = await renderBackCardCanvas(data);
+export async function renderBackCardBuffer(
+  data: EthiopianIdData,
+  templateId: CardTemplateId = "template1"
+): Promise<Buffer> {
+  const canvas = await renderBackCardCanvas(data, templateId);
   return canvas.toBuffer("image/png");
 }
 
 // Generate single horizontal combined card (Front Left, Back Right, 15px gap, Zero paper background)
 export async function renderCombinedCardBuffer(
   data: EthiopianIdData,
-  photoStyle: BotPhotoStyle = "bw"
+  photoStyle: BotPhotoStyle = "bw",
+  templateId: CardTemplateId = "template1"
 ): Promise<Buffer> {
   const [frontCanvas, backCanvas] = await Promise.all([
-    renderFrontCardCanvas(data, photoStyle),
-    renderBackCardCanvas(data),
+    renderFrontCardCanvas(data, photoStyle, templateId),
+    renderBackCardCanvas(data, templateId),
   ]);
 
   const GAP_PX = 15;
@@ -351,3 +532,4 @@ export async function renderCombinedCardBuffer(
 
   return combinedCanvas.toBuffer("image/png");
 }
+
