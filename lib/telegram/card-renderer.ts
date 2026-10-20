@@ -168,6 +168,142 @@ function createMiniPortraitMask(w: number, h: number) {
   return mCanvas;
 }
 
+function isolateSubject(srcCanvas: any) {
+  const W = srcCanvas.width;
+  const H = srcCanvas.height;
+  const ctx = srcCanvas.getContext("2d");
+  const imgData = ctx.getImageData(0, 0, W, H);
+  const data = imgData.data;
+
+  const bgMask = new Uint8Array(W * H);
+  const queue: number[] = [];
+
+  function isBgColor(idx: number) {
+    const r = data[idx];
+    const g = data[idx + 1];
+    const b = data[idx + 2];
+    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+    return lum > 88;
+  }
+
+  // Seed top boundary and upper corners
+  for (let x = 0; x < W; x++) {
+    const idx = (0 * W + x) * 4;
+    if (isBgColor(idx)) {
+      bgMask[x] = 1;
+      queue.push(x);
+    }
+  }
+  for (let y = 0; y < H * 0.75; y++) {
+    const lIdx = (y * W + 0) * 4;
+    if (isBgColor(lIdx) && !bgMask[y * W]) {
+      bgMask[y * W] = 1;
+      queue.push(y * W);
+    }
+    const rIdx = (y * W + (W - 1)) * 4;
+    if (isBgColor(rIdx) && !bgMask[y * W + W - 1]) {
+      bgMask[y * W + W - 1] = 1;
+      queue.push(y * W + W - 1);
+    }
+  }
+
+  // Flood fill background
+  let head = 0;
+  while (head < queue.length) {
+    const curr = queue[head++];
+    const cx = curr % W;
+    const cy = Math.floor(curr / W);
+
+    const neighbors = [
+      [cx - 1, cy],
+      [cx + 1, cy],
+      [cx, cy - 1],
+      [cx, cy + 1]
+    ];
+
+    for (const [nx, ny] of neighbors) {
+      if (nx >= 0 && nx < W && ny >= 0 && ny < H) {
+        const nPos = ny * W + nx;
+        if (!bgMask[nPos]) {
+          const nIdx = nPos * 4;
+          if (isBgColor(nIdx)) {
+            bgMask[nPos] = 1;
+            queue.push(nPos);
+          }
+        }
+      }
+    }
+  }
+
+  // Soft feathering blur on alpha mask
+  const alphaMap = new Float32Array(W * H);
+  for (let i = 0; i < W * H; i++) {
+    alphaMap[i] = bgMask[i] ? 0.0 : 1.0;
+  }
+
+  const blurRadius = 3;
+  const tempAlpha = new Float32Array(W * H);
+
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      let sum = 0, count = 0;
+      for (let k = -blurRadius; k <= blurRadius; k++) {
+        const nx = x + k;
+        if (nx >= 0 && nx < W) {
+          sum += alphaMap[y * W + nx];
+          count++;
+        }
+      }
+      tempAlpha[y * W + x] = sum / count;
+    }
+  }
+
+  for (let x = 0; x < W; x++) {
+    for (let y = 0; y < H; y++) {
+      let sum = 0, count = 0;
+      for (let k = -blurRadius; k <= blurRadius; k++) {
+        const ny = y + k;
+        if (ny >= 0 && ny < H) {
+          sum += tempAlpha[ny * W + x];
+          count++;
+        }
+      }
+      alphaMap[y * W + x] = sum / count;
+    }
+  }
+
+  // Bottom edge soft fade so jacket merges into card pattern
+  const fadeBottomPx = 25;
+  for (let y = H - fadeBottomPx; y < H; y++) {
+    const factor = (H - 1 - y) / fadeBottomPx;
+    for (let x = 0; x < W; x++) {
+      alphaMap[y * W + x] *= factor;
+    }
+  }
+
+  // Apply alpha and enhance vibrancy
+  for (let i = 0; i < W * H; i++) {
+    const idx = i * 4;
+    const a = alphaMap[i];
+
+    if (a > 0.1) {
+      let r = data[idx];
+      let g = data[idx + 1];
+      let b = data[idx + 2];
+      r = Math.min(255, Math.round(r * 1.08 + 4));
+      g = Math.min(255, Math.round(g * 1.08 + 4));
+      b = Math.min(255, Math.round(b * 1.08 + 4));
+      data[idx] = r;
+      data[idx + 1] = g;
+      data[idx + 2] = b;
+    }
+    data[idx + 3] = Math.round(a * 255);
+  }
+
+  ctx.putImageData(imgData, 0, 0);
+  return srcCanvas;
+}
+
 export type CardTemplateId = "template1" | "template2" | "template3";
 
 const TEMPLATE_CONFIG: Record<CardTemplateId, { front: string; back: string }> = {
@@ -326,10 +462,8 @@ export async function renderFrontCardCanvas(
         const offY = (targetH - drawH) / 2;
         pCtx.drawImage(photoDrawable, offX, offY, drawW, drawH);
 
-        // Apply broad bust mask with smooth sine-feathering
-        const mask = createBroadBustMask(targetW, targetH, 28, 32, 40, 25, 55);
-        pCtx.globalCompositeOperation = "destination-in";
-        pCtx.drawImage(mask, 0, 0);
+        // Isolate subject and remove wall/backdrop entirely
+        isolateSubject(pCanvas);
 
         ctx.drawImage(pCanvas, photoX, photoY);
       } else {
@@ -475,9 +609,8 @@ export async function renderFrontCardCanvas(
       }
       mCtx.drawImage(photoDrawable, (miniW - drawW) / 2, (miniH - drawH) / 2, drawW, drawH);
 
-      const miniMask = createMiniPortraitMask(miniW, miniH);
-      mCtx.globalCompositeOperation = "destination-in";
-      mCtx.drawImage(miniMask, 0, 0);
+      // Isolate subject for mini portrait
+      isolateSubject(miniCanvas);
 
       ctx.save();
       ctx.globalAlpha = 0.85;
@@ -493,30 +626,8 @@ export async function renderFrontCardCanvas(
     }
   }
 
-  // 5. Vertical issue date on left margin
-  if (templateId === "template2") {
-    ctx.save();
-    ctx.translate(26, 608);
-    ctx.rotate(-Math.PI / 2);
-    ctx.font = "bold 14px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillStyle = "#945722";
-    ctx.fillText("የተሰጠበት ቀን : ", 0, 0);
-    const w1 = ctx.measureText("የተሰጠበት ቀን : ").width;
-
-    ctx.fillStyle = "#0A0F1D";
-    ctx.font = "bold 14px Arial, sans-serif";
-    ctx.fillText(data.dateOfIssueEth, w1, 0);
-    const w2 = w1 + ctx.measureText(data.dateOfIssueEth).width;
-
-    ctx.fillStyle = "#945722";
-    ctx.font = "bold 14px Arial, sans-serif";
-    ctx.fillText(" Date of Issue ", w2, 0);
-    const w3 = w2 + ctx.measureText(" Date of Issue ").width;
-
-    ctx.fillStyle = "#0A0F1D";
-    ctx.fillText(formatGregorianDate(data.dateOfIssueGreg), w3, 0);
-    ctx.restore();
-  } else {
+  // 5. Vertical issue date on left margin (excluded for template2 to preserve natural clean gradient edge)
+  if (templateId !== "template2") {
     ctx.save();
     ctx.translate(38, 605);
     ctx.rotate(-Math.PI / 2);
@@ -622,9 +733,18 @@ export async function renderBackCardCanvas(
     ctx.font = "bold 22px Arial, monospace";
     ctx.fillText(data.finNumber, 185, 538);
 
-    // SN Number inside existing SN pill badge
+    // SN inside white rounded box (centered vertically and horizontally)
+    ctx.fillStyle = "#FFFFFF";
+    drawRoundedRect(ctx, 794, 544, 194, 60, 6);
+    ctx.fill();
+
+    ctx.font = "bold 19px Arial, sans-serif";
+    ctx.fillStyle = "#945722";
+    ctx.fillText("SN : ", 810, 582);
+    const snW = ctx.measureText("SN : ").width;
+    ctx.fillStyle = "#0A0F1D";
     ctx.font = "bold 19px Arial, monospace";
-    ctx.fillText(data.serialNumber || "6878747", 835, 582);
+    ctx.fillText(data.serialNumber || "65501482", 810 + snW, 582);
 
     // QR Code with clean rounded white backdrop for 100% scan reliability
     if (qrImg) {
