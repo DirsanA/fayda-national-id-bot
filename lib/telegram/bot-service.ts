@@ -33,7 +33,8 @@ function getBotToken(): string {
 }
 
 function getDefaultFaydaApiKey(): string {
-  const key = process.env.FAYDA_API_KEY || "";
+  const raw = process.env.FAYDA_API_KEY || "";
+  const key = raw.replace(/^FAYDA_API_KEY=/, "").trim();
   if (!key) {
     throw new Error("FAYDA_API_KEY is not configured in .env");
   }
@@ -863,10 +864,10 @@ export async function handleTelegramUpdate(update: any) {
         return;
       }
 
-      // Check live provider service health using shared server key
+      // Optional live provider service health check using shared server key
       await sendTelegramAction(chatId, "typing");
       try {
-        const providerBal = await fetchFaydaBalance();
+        const providerBal = await fetchFaydaBalance(undefined, 6000);
         if (providerBal && typeof providerBal.points === "number" && providerBal.points <= 0) {
           clearSessionData(userId);
           await sendTelegramMessage(
@@ -877,14 +878,8 @@ export async function handleTelegramUpdate(update: any) {
           return;
         }
       } catch (err: any) {
-        clearSessionData(userId);
-        const errMsg = err?.message || "Temporary connection issue with Fayda provider";
-        await sendTelegramMessage(
-          chatId,
-          `⚠️ *Temporary Service Issue*\n\nUnable to verify provider status:\n_${errMsg}_\n\n🔄 Please tap *🪪 Print ID Card* to try again.`,
-          { reply_markup: MAIN_MENU_KEYBOARD }
-        );
-        return;
+        console.warn("[Bot] Preliminary provider balance check error (proceeding to FAN entry):", err?.message);
+        // Do not block the verified user from entering FAN if only the status check had a transient blip
       }
 
       clearSessionData(userId);

@@ -5,7 +5,8 @@ const BASE_URL = "https://otp.affiliate.pro.et/api/v1";
 
 export async function GET(req: NextRequest) {
   try {
-    const apiKey = (process.env.FAYDA_API_KEY || req.headers.get("x-api-key") || "").trim();
+    const rawKey = (process.env.FAYDA_API_KEY || req.headers.get("x-api-key") || "").trim();
+    const apiKey = rawKey.replace(/^FAYDA_API_KEY=/, "").trim();
 
     if (!apiKey) {
       return NextResponse.json(
