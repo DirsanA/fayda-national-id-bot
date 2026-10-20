@@ -89,6 +89,85 @@ function drawCode128Barcode(
   });
 }
 
+function createBroadBustMask(
+  w: number,
+  h: number,
+  fadeLeft = 28,
+  fadeRight = 32,
+  fadeTop = 40,
+  fadeBottom = 25,
+  cornerR = 55
+) {
+  const mCanvas = createCanvas(w, h);
+  const mCtx = mCanvas.getContext("2d");
+  const imgData = mCtx.createImageData(w, h);
+  const data = imgData.data;
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = (y * w + x) * 4;
+
+      let ax = 1.0;
+      if (x < fadeLeft) {
+        ax = Math.sin((x / fadeLeft) * (Math.PI / 2));
+      } else if (x > w - fadeRight) {
+        ax = Math.sin(((w - x) / fadeRight) * (Math.PI / 2));
+      }
+
+      let ay = 1.0;
+      if (y < fadeTop) {
+        ay = Math.sin((y / fadeTop) * (Math.PI / 2));
+      } else if (y > h - fadeBottom) {
+        ay = Math.sin(((h - y) / fadeBottom) * (Math.PI / 2));
+      }
+
+      let corner = 1.0;
+      if (y < cornerR) {
+        if (x < cornerR) {
+          const dx = cornerR - x;
+          const dy = cornerR - y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist > cornerR) {
+            corner = Math.max(0, 1 - (dist - cornerR) / 25);
+          }
+        } else if (x > w - cornerR) {
+          const dx = x - (w - cornerR);
+          const dy = cornerR - y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist > cornerR) {
+            corner = Math.max(0, 1 - (dist - cornerR) / 25);
+          }
+        }
+      }
+
+      const alpha = Math.round(ax * ay * corner * 255);
+      data[idx] = 255;
+      data[idx + 1] = 255;
+      data[idx + 2] = 255;
+      data[idx + 3] = alpha;
+    }
+  }
+  mCtx.putImageData(imgData, 0, 0);
+  return mCanvas;
+}
+
+function createMiniPortraitMask(w: number, h: number) {
+  const mCanvas = createCanvas(w, h);
+  const mCtx = mCanvas.getContext("2d");
+  mCtx.save();
+  mCtx.translate(w / 2, h / 2);
+  mCtx.scale(1, h / w);
+  const grad = mCtx.createRadialGradient(0, 0, w * 0.22, 0, 0, w * 0.48);
+  grad.addColorStop(0, "rgba(255, 255, 255, 1)");
+  grad.addColorStop(0.65, "rgba(255, 255, 255, 0.95)");
+  grad.addColorStop(0.85, "rgba(255, 255, 255, 0.4)");
+  grad.addColorStop(1, "rgba(255, 255, 255, 0)");
+  mCtx.fillStyle = grad;
+  mCtx.fillRect(-w, -w, w * 2, w * 2);
+  mCtx.restore();
+  return mCanvas;
+}
+
 export type CardTemplateId = "template1" | "template2" | "template3";
 
 const TEMPLATE_CONFIG: Record<CardTemplateId, { front: string; back: string }> = {
@@ -225,17 +304,17 @@ export async function renderFrontCardCanvas(
       photoDrawable =
         photoStyle === "bw" ? convertServerImageToGrayscale(rawPhotoImg) : rawPhotoImg;
       if (templateId === "template2") {
-        // Natural broad bust with elliptical, highly feathered alpha-vignette mask on all outer edges
-        const targetW = 330;
+        // Natural broad bust with seamless soft-feathered alpha-vignette mask
+        const targetW = 320;
         const targetH = 430;
-        const photoX = 42;
-        const photoY = 118;
+        const photoX = 55;
+        const photoY = 125;
 
-        const featheredCanvas = createCanvas(targetW, targetH);
-        const fCtx = featheredCanvas.getContext("2d");
-        fCtx.imageSmoothingEnabled = true;
+        const pCanvas = createCanvas(targetW, targetH);
+        const pCtx = pCanvas.getContext("2d");
+        pCtx.imageSmoothingEnabled = true;
 
-        // Preserve aspect ratio (centered cover)
+        // Preserve natural aspect ratio (centered cover)
         const aspect = rawPhotoImg.width / rawPhotoImg.height;
         let drawW = targetW;
         let drawH = targetW / aspect;
@@ -245,27 +324,14 @@ export async function renderFrontCardCanvas(
         }
         const offX = (targetW - drawW) / 2;
         const offY = (targetH - drawH) / 2;
-        fCtx.drawImage(photoDrawable, offX, offY, drawW, drawH);
+        pCtx.drawImage(photoDrawable, offX, offY, drawW, drawH);
 
-        // Elliptical, highly feathered alpha-vignette mask to ALL edges
-        fCtx.globalCompositeOperation = "destination-in";
-        fCtx.save();
-        fCtx.translate(targetW / 2, targetH / 2);
-        fCtx.scale(1, targetH / targetW);
-        const maskGrad = fCtx.createRadialGradient(
-          0, 0, targetW * 0.22,
-          0, 0, targetW * 0.46
-        );
-        maskGrad.addColorStop(0, "rgba(0, 0, 0, 1)");
-        maskGrad.addColorStop(0.55, "rgba(0, 0, 0, 1)");
-        maskGrad.addColorStop(0.75, "rgba(0, 0, 0, 0.85)");
-        maskGrad.addColorStop(0.90, "rgba(0, 0, 0, 0.35)");
-        maskGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
-        fCtx.fillStyle = maskGrad;
-        fCtx.fillRect(-targetW, -targetW, targetW * 2, targetW * 2);
-        fCtx.restore();
+        // Apply broad bust mask with smooth sine-feathering
+        const mask = createBroadBustMask(targetW, targetH, 28, 32, 40, 25, 55);
+        pCtx.globalCompositeOperation = "destination-in";
+        pCtx.drawImage(mask, 0, 0);
 
-        ctx.drawImage(featheredCanvas, photoX, photoY, targetW, targetH);
+        ctx.drawImage(pCanvas, photoX, photoY);
       } else {
         const photoW = 281;
         const photoH = 400;
@@ -318,47 +384,47 @@ export async function renderFrontCardCanvas(
     const textColor = "#0A0F1D";
     ctx.fillStyle = textColor;
 
-    ctx.font = "bold 24px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(data.fullNameAmharic, 418, 210);
+    ctx.font = "bold 22px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(data.fullNameAmharic, 416, 210);
 
-    ctx.font = "bold 22px Arial, sans-serif";
-    ctx.fillText(data.fullNameEnglish, 418, 238);
+    ctx.font = "bold 20px Arial, sans-serif";
+    ctx.fillText(data.fullNameEnglish, 416, 240);
 
-    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(`${data.dateOfBirthEth} | ${dobGregFormatted}`, 418, 322);
+    ctx.font = "bold 19.5px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.dateOfBirthEth} | ${dobGregFormatted}`, 416, 322);
 
-    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(`${data.sexAmharic} | ${data.sexEnglish}`, 418, 382);
+    ctx.font = "bold 19.5px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.sexAmharic} | ${data.sexEnglish}`, 416, 382);
 
-    // Clear 21px gap below Sex line before Expiry label, value directly below label
-    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(`${data.dateOfExpiryEth} | ${expiryGregFormatted}`, 418, 448);
+    // Clear 23px gap below Sex line before Expiry label, value directly below label
+    ctx.font = "bold 19.5px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.dateOfExpiryEth} | ${expiryGregFormatted}`, 416, 450);
 
     // Re-sized & re-centered barcode container (shorter horizontally, taller vertically)
-    // Margin to left label >= 25px (465 - 425 = 40px), margin to mini-portrait >= 30px (835 - 735 = 100px)
-    const fanBoxX = 465;
+    // Margin to left label >= 25px (445 - 420 = 25px), margin to mini-portrait >= 30px (830 - 715 = 115px)
+    const fanBoxX = 445;
     const fanBoxY = 502;
     const fanBoxW = 270;
-    const fanBoxH = 92;
+    const fanBoxH = 96;
 
     ctx.fillStyle = "#FFFFFF";
-    ctx.shadowColor = "rgba(0, 0, 0, 0.06)";
-    ctx.shadowBlur = 6;
-    drawRoundedRect(ctx, fanBoxX, fanBoxY, fanBoxW, fanBoxH, 12);
+    ctx.shadowColor = "rgba(0, 0, 0, 0.05)";
+    ctx.shadowBlur = 4;
+    drawRoundedRect(ctx, fanBoxX, fanBoxY, fanBoxW, fanBoxH, 10);
     ctx.fill();
     ctx.shadowColor = "transparent";
 
     ctx.strokeStyle = "#E2E8F0";
     ctx.lineWidth = 1;
-    drawRoundedRect(ctx, fanBoxX, fanBoxY, fanBoxW, fanBoxH, 12);
+    drawRoundedRect(ctx, fanBoxX, fanBoxY, fanBoxW, fanBoxH, 10);
     ctx.stroke();
 
     ctx.fillStyle = textColor;
     ctx.font = "bold 20px monospace";
     ctx.textAlign = "center";
-    ctx.fillText(data.fanNumber, fanBoxX + fanBoxW / 2, fanBoxY + 28);
+    ctx.fillText(data.fanNumber, fanBoxX + fanBoxW / 2, fanBoxY + 26);
     ctx.textAlign = "left";
-    drawCode128Barcode(ctx, data.fanNumber, fanBoxX + 16, fanBoxY + 36, fanBoxW - 32, 48);
+    drawCode128Barcode(ctx, data.fanNumber, fanBoxX + 14, fanBoxY + 32, fanBoxW - 28, 54);
   } else if (templateId === "template3") {
     ctx.fillStyle = "#020617";
     ctx.font = "bold 26px NotoSansEthiopic, Arial, sans-serif";
@@ -392,34 +458,30 @@ export async function renderFrontCardCanvas(
   // 4. Ghost photo
   if (photoDrawable) {
     if (templateId === "template2") {
-      // Circular/oval with strongly feathered, soft-faded vignette edges
       const miniW = 115;
-      const miniH = 130;
-      const miniX = 835;
+      const miniH = 135;
+      const miniX = 830;
       const miniY = 460;
       const miniCanvas = createCanvas(miniW, miniH);
       const mCtx = miniCanvas.getContext("2d");
-      mCtx.drawImage(photoDrawable, 0, 0, miniW, miniH);
+      mCtx.imageSmoothingEnabled = true;
 
+      const aspect = photoDrawable.width / photoDrawable.height;
+      let drawW = miniW;
+      let drawH = miniW / aspect;
+      if (drawH < miniH) {
+        drawH = miniH;
+        drawW = miniH * aspect;
+      }
+      mCtx.drawImage(photoDrawable, (miniW - drawW) / 2, (miniH - drawH) / 2, drawW, drawH);
+
+      const miniMask = createMiniPortraitMask(miniW, miniH);
       mCtx.globalCompositeOperation = "destination-in";
-      mCtx.save();
-      mCtx.translate(miniW / 2, miniH / 2);
-      mCtx.scale(1, miniH / miniW);
-      const mGrad = mCtx.createRadialGradient(
-        0, 0, miniW * 0.20,
-        0, 0, miniW * 0.47
-      );
-      mGrad.addColorStop(0, "rgba(0, 0, 0, 1)");
-      mGrad.addColorStop(0.60, "rgba(0, 0, 0, 0.9)");
-      mGrad.addColorStop(0.85, "rgba(0, 0, 0, 0.4)");
-      mGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
-      mCtx.fillStyle = mGrad;
-      mCtx.fillRect(-miniW, -miniW, miniW * 2, miniW * 2);
-      mCtx.restore();
+      mCtx.drawImage(miniMask, 0, 0);
 
       ctx.save();
-      ctx.globalAlpha = 0.75;
-      ctx.drawImage(miniCanvas, miniX, miniY, miniW, miniH);
+      ctx.globalAlpha = 0.85;
+      ctx.drawImage(miniCanvas, miniX, miniY);
       ctx.restore();
     } else {
       ctx.save();
@@ -432,27 +494,51 @@ export async function renderFrontCardCanvas(
   }
 
   // 5. Vertical issue date on left margin
-  ctx.save();
-  ctx.translate(38, 605);
-  ctx.rotate(-Math.PI / 2);
-  ctx.font = "bold 14px NotoSansEthiopic, Arial, sans-serif";
-  ctx.fillStyle = "#C68932";
-  ctx.fillText("የተሰጠበት ቀን: ", 0, 0);
-  const w1 = ctx.measureText("የተሰጠበት ቀን: ").width;
+  if (templateId === "template2") {
+    ctx.save();
+    ctx.translate(26, 608);
+    ctx.rotate(-Math.PI / 2);
+    ctx.font = "bold 14px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillStyle = "#945722";
+    ctx.fillText("የተሰጠበት ቀን : ", 0, 0);
+    const w1 = ctx.measureText("የተሰጠበት ቀን : ").width;
 
-  ctx.fillStyle = "#020617";
-  ctx.font = "bold 14px Arial, sans-serif";
-  ctx.fillText(data.dateOfIssueEth, w1, 0);
-  const w2 = w1 + ctx.measureText(data.dateOfIssueEth).width;
+    ctx.fillStyle = "#0A0F1D";
+    ctx.font = "bold 14px Arial, sans-serif";
+    ctx.fillText(data.dateOfIssueEth, w1, 0);
+    const w2 = w1 + ctx.measureText(data.dateOfIssueEth).width;
 
-  ctx.fillStyle = "#C68932";
-  ctx.font = "bold 14px Arial, sans-serif";
-  ctx.fillText("   Date of Issue: ", w2, 0);
-  const w3 = w2 + ctx.measureText("   Date of Issue: ").width;
+    ctx.fillStyle = "#945722";
+    ctx.font = "bold 14px Arial, sans-serif";
+    ctx.fillText(" Date of Issue ", w2, 0);
+    const w3 = w2 + ctx.measureText(" Date of Issue ").width;
 
-  ctx.fillStyle = "#020617";
-  ctx.fillText(formatGregorianDate(data.dateOfIssueGreg), w3, 0);
-  ctx.restore();
+    ctx.fillStyle = "#0A0F1D";
+    ctx.fillText(formatGregorianDate(data.dateOfIssueGreg), w3, 0);
+    ctx.restore();
+  } else {
+    ctx.save();
+    ctx.translate(38, 605);
+    ctx.rotate(-Math.PI / 2);
+    ctx.font = "bold 14px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillStyle = "#C68932";
+    ctx.fillText("የተሰጠበት ቀን: ", 0, 0);
+    const w1 = ctx.measureText("የተሰጠበት ቀን: ").width;
+
+    ctx.fillStyle = "#020617";
+    ctx.font = "bold 14px Arial, sans-serif";
+    ctx.fillText(data.dateOfIssueEth, w1, 0);
+    const w2 = w1 + ctx.measureText(data.dateOfIssueEth).width;
+
+    ctx.fillStyle = "#C68932";
+    ctx.font = "bold 14px Arial, sans-serif";
+    ctx.fillText("   Date of Issue: ", w2, 0);
+    const w3 = w2 + ctx.measureText("   Date of Issue: ").width;
+
+    ctx.fillStyle = "#020617";
+    ctx.fillText(formatGregorianDate(data.dateOfIssueGreg), w3, 0);
+    ctx.restore();
+  }
 
   return canvas;
 }
@@ -516,19 +602,29 @@ export async function renderBackCardCanvas(
     ctx.font = "bold 24px Arial, sans-serif";
     ctx.fillText(data.phoneNumber, 45, 102);
 
-    // Compact single-line address spacing leaving >160px clearance above FIN container
+    // Stacked Amharic and English address lines with tight, consistent line-height (>100px clearance above FIN)
     ctx.font = "bold 19px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(`${data.regionAmharic} / ${data.regionEnglish}`, 45, 275);
-    ctx.fillText(`${data.subcityAmharic} / ${data.subcityEnglish}`, 45, 305);
-    ctx.fillText(`${data.woredaAmharic} / ${data.woredaEnglish}`, 45, 335);
+    ctx.fillText(data.regionAmharic, 45, 252);
+    ctx.font = "bold 19px Arial, sans-serif";
+    ctx.fillText(data.regionEnglish, 45, 280);
+
+    ctx.font = "bold 19px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(data.subcityAmharic, 45, 310);
+    ctx.font = "bold 19px Arial, sans-serif";
+    ctx.fillText(data.subcityEnglish, 45, 338);
+
+    ctx.font = "bold 19px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(data.woredaAmharic, 45, 368);
+    ctx.font = "bold 19px Arial, sans-serif";
+    ctx.fillText(data.woredaEnglish, 45, 396);
 
     // FIN Number inside FIN box (to the right of pre-printed FIN label)
     ctx.font = "bold 22px Arial, monospace";
-    ctx.fillText(data.finNumber, 175, 538);
+    ctx.fillText(data.finNumber, 185, 538);
 
     // SN Number inside existing SN pill badge
     ctx.font = "bold 19px Arial, monospace";
-    ctx.fillText(data.serialNumber || "65501482", 835, 582);
+    ctx.fillText(data.serialNumber || "6878747", 835, 582);
 
     // QR Code with clean rounded white backdrop for 100% scan reliability
     if (qrImg) {
