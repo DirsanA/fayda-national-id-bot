@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
     }
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
+    const timer = setTimeout(() => controller.abort(), 25000);
 
     const res = await fetch(`${BASE_URL}/balance`, {
       method: "GET",
