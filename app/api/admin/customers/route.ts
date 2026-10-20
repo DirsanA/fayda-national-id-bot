@@ -76,10 +76,14 @@ async function acquireAdjustmentLock(): Promise<() => void> {
 
 // Helper to query live available points of default admin Fayda key
 async function fetchDefaultAdminProviderBalance(): Promise<number | null> {
-  const apiKey = (process.env.FAYDA_API_KEY || "").trim();
-  if (!apiKey) return null;
+  const rawKey = process.env.FAYDA_API_KEY || "";
+  const apiKey = rawKey.replace(/^FAYDA_API_KEY=/, "").trim();
+  if (!apiKey) {
+    console.warn("[Admin] FAYDA_API_KEY is missing or empty in environment.");
+    return null;
+  }
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 6000);
+  const timer = setTimeout(() => controller.abort(), 10000);
   try {
     const res = await fetch(`${FAYDA_BASE_URL}/balance`, {
       method: "GET",
@@ -87,14 +91,18 @@ async function fetchDefaultAdminProviderBalance(): Promise<number | null> {
       signal: controller.signal,
     });
     clearTimeout(timer);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn(`[Admin] Live provider balance query failed (HTTP ${res.status}): ${res.statusText}`);
+      return null;
+    }
     const data = await res.json().catch(() => null);
     const points = Number(
       data?.remainingPoints ?? data?.points ?? data?.balance ?? data?.credit ?? 0
     );
     return isNaN(points) ? null : points;
-  } catch {
+  } catch (err) {
     clearTimeout(timer);
+    console.warn("[Admin] Live provider balance network error:", err);
     return null;
   }
 }
