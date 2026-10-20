@@ -243,32 +243,32 @@ export async function renderFrontCardCanvas(
   const expiryGregFormatted = formatGregorianDate(data.dateOfExpiryGreg);
 
   if (templateId === "template1") {
-    ctx.font = "bold 26px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(data.fullNameAmharic, 418, 207);
+    ctx.font = "bold 25px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(data.fullNameAmharic, 418, 196);
 
-    ctx.font = "bold 24px Arial, sans-serif";
-    ctx.fillText(data.fullNameEnglish, 418, 250);
+    ctx.font = "bold 23px Arial, sans-serif";
+    ctx.fillText(data.fullNameEnglish, 418, 230);
 
-    ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(`${data.dateOfBirthEth} | ${dobGregFormatted}`, 418, 334);
+    ctx.font = "bold 22px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.dateOfBirthEth} | ${dobGregFormatted}`, 418, 330);
 
-    ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(`${data.sexAmharic} | ${data.sexEnglish}`, 418, 405);
+    ctx.font = "bold 22px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.sexAmharic} | ${data.sexEnglish}`, 418, 394);
 
-    ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(`${data.dateOfExpiryEth} | ${expiryGregFormatted}`, 418, 468);
+    ctx.font = "bold 22px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.dateOfExpiryEth} | ${expiryGregFormatted}`, 418, 460);
 
-    // Barcode box and FAN
-    const barcodeBoxX = 456;
-    const barcodeBoxY = 496;
-    const barcodeBoxW = 328;
+    // Barcode box and FAN (Strictly inside existing white box: x=457..783, y=498..594)
+    const barcodeBoxX = 457;
+    const barcodeBoxY = 498;
+    const barcodeBoxW = 326;
 
     ctx.fillStyle = "#020617";
-    ctx.font = "bold 22px monospace";
+    ctx.font = "bold 21px monospace";
     ctx.textAlign = "center";
-    ctx.fillText(data.fanNumber, barcodeBoxX + barcodeBoxW / 2, barcodeBoxY + 26);
+    ctx.fillText(data.fanNumber, barcodeBoxX + barcodeBoxW / 2, barcodeBoxY + 25);
     ctx.textAlign = "left";
-    drawCode128Barcode(ctx, data.fanNumber, barcodeBoxX + 10, barcodeBoxY + 34, barcodeBoxW - 20, 52);
+    drawCode128Barcode(ctx, data.fanNumber, barcodeBoxX + 13, barcodeBoxY + 34, barcodeBoxW - 26, 52);
   } else if (templateId === "template2") {
     ctx.font = "bold 26px NotoSansEthiopic, Arial, sans-serif";
     ctx.fillText(data.fullNameAmharic, 418, 208);
@@ -390,26 +390,17 @@ export async function renderBackCardCanvas(
   const qrImg = await loadServerImage(qrSource);
 
   if (templateId === "template1") {
-    ctx.font = "bold 25px Arial, sans-serif";
-    ctx.fillText(data.phoneNumber, 40, 110);
+    ctx.font = "bold 24px Arial, sans-serif";
+    ctx.fillText(data.phoneNumber, 40, 104);
 
-    ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(`${data.nationalityAmharic} | ${data.nationalityEnglish}`, 40, 194);
+    ctx.font = "bold 22px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.nationalityAmharic} | ${data.nationalityEnglish}`, 40, 188);
 
-    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(data.regionAmharic, 40, 258);
-    ctx.font = "bold 21px Arial, sans-serif";
-    ctx.fillText(data.regionEnglish, 40, 293);
-
-    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(data.subcityAmharic, 40, 330);
-    ctx.font = "bold 21px Arial, sans-serif";
-    ctx.fillText(data.subcityEnglish, 40, 359);
-
-    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(data.woredaAmharic, 40, 395);
-    ctx.font = "bold 21px Arial, sans-serif";
-    ctx.fillText(data.woredaEnglish, 40, 430);
+    // Tight single-line spacing under Address
+    ctx.font = "bold 20px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.regionAmharic} / ${data.regionEnglish}`, 40, 254);
+    ctx.fillText(`${data.subcityAmharic} / ${data.subcityEnglish}`, 40, 282);
+    ctx.fillText(`${data.woredaAmharic} / ${data.woredaEnglish}`, 40, 310);
 
     // FIN Number inside FIN box
     ctx.fillStyle = "#020617";
