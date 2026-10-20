@@ -225,11 +225,11 @@ export async function renderFrontCardCanvas(
       photoDrawable =
         photoStyle === "bw" ? convertServerImageToGrayscale(rawPhotoImg) : rawPhotoImg;
       if (templateId === "template2") {
-        // Soft elliptical alpha-feathering gradient mask along edges for modern blue
-        const targetW = 290;
-        const targetH = 395;
-        const photoX = 65;
-        const photoY = 135;
+        // Natural broad bust with elliptical, highly feathered alpha-vignette mask on all outer edges
+        const targetW = 330;
+        const targetH = 430;
+        const photoX = 42;
+        const photoY = 118;
 
         const featheredCanvas = createCanvas(targetW, targetH);
         const fCtx = featheredCanvas.getContext("2d");
@@ -247,18 +247,19 @@ export async function renderFrontCardCanvas(
         const offY = (targetH - drawH) / 2;
         fCtx.drawImage(photoDrawable, offX, offY, drawW, drawH);
 
-        // Soft elliptical alpha feathering mask
+        // Elliptical, highly feathered alpha-vignette mask to ALL edges
         fCtx.globalCompositeOperation = "destination-in";
         fCtx.save();
         fCtx.translate(targetW / 2, targetH / 2);
         fCtx.scale(1, targetH / targetW);
         const maskGrad = fCtx.createRadialGradient(
-          0, 0, targetW * 0.31,
-          0, 0, targetW * 0.48
+          0, 0, targetW * 0.22,
+          0, 0, targetW * 0.46
         );
         maskGrad.addColorStop(0, "rgba(0, 0, 0, 1)");
-        maskGrad.addColorStop(0.75, "rgba(0, 0, 0, 0.95)");
-        maskGrad.addColorStop(0.9, "rgba(0, 0, 0, 0.5)");
+        maskGrad.addColorStop(0.55, "rgba(0, 0, 0, 1)");
+        maskGrad.addColorStop(0.75, "rgba(0, 0, 0, 0.85)");
+        maskGrad.addColorStop(0.90, "rgba(0, 0, 0, 0.35)");
         maskGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
         fCtx.fillStyle = maskGrad;
         fCtx.fillRect(-targetW, -targetW, targetW * 2, targetW * 2);
@@ -280,12 +281,12 @@ export async function renderFrontCardCanvas(
     }
   }
 
-  // 3. Demographic text - Clean and sharp with NotoSansEthiopic
-  ctx.fillStyle = "#020617";
+  // 3. Demographic text - Clean, high contrast deep navy-black with NotoSansEthiopic
   const dobGregFormatted = formatGregorianDate(data.dateOfBirthGreg);
   const expiryGregFormatted = formatGregorianDate(data.dateOfExpiryGreg);
 
   if (templateId === "template1") {
+    ctx.fillStyle = "#020617";
     ctx.font = "bold 25px NotoSansEthiopic, Arial, sans-serif";
     ctx.fillText(data.fullNameAmharic, 418, 196);
 
@@ -313,35 +314,53 @@ export async function renderFrontCardCanvas(
     ctx.textAlign = "left";
     drawCode128Barcode(ctx, data.fanNumber, barcodeBoxX + 13, barcodeBoxY + 34, barcodeBoxW - 26, 52);
   } else if (templateId === "template2") {
-    // Front coordinates for modern blue template with guaranteed vertical gaps
-    ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
+    // Front coordinates for modern blue template with guaranteed vertical gaps and deep navy-black contrast
+    const textColor = "#0A0F1D";
+    ctx.fillStyle = textColor;
+
+    ctx.font = "bold 24px NotoSansEthiopic, Arial, sans-serif";
     ctx.fillText(data.fullNameAmharic, 418, 210);
 
-    ctx.font = "bold 21px Arial, sans-serif";
-    ctx.fillText(data.fullNameEnglish, 418, 240);
+    ctx.font = "bold 22px Arial, sans-serif";
+    ctx.fillText(data.fullNameEnglish, 418, 238);
 
-    ctx.font = "bold 20px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(`${data.dateOfBirthEth} | ${dobGregFormatted}`, 418, 324);
+    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.dateOfBirthEth} | ${dobGregFormatted}`, 418, 322);
 
-    ctx.font = "bold 20px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(`${data.sexAmharic} | ${data.sexEnglish}`, 418, 384);
+    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.sexAmharic} | ${data.sexEnglish}`, 418, 382);
 
-    // Clear 19px gap below Sex line before Expiry label, value directly below label
-    ctx.font = "bold 20px NotoSansEthiopic, Arial, sans-serif";
+    // Clear 21px gap below Sex line before Expiry label, value directly below label
+    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
     ctx.fillText(`${data.dateOfExpiryEth} | ${expiryGregFormatted}`, 418, 448);
 
-    // Barcode box and FAN strictly inside white placeholder (x=461..773, y=510..596)
-    const barcodeBoxX = 461;
-    const barcodeBoxY = 510;
-    const barcodeBoxW = 312;
+    // Re-sized & re-centered barcode container (shorter horizontally, taller vertically)
+    // Margin to left label >= 25px (465 - 425 = 40px), margin to mini-portrait >= 30px (835 - 735 = 100px)
+    const fanBoxX = 465;
+    const fanBoxY = 502;
+    const fanBoxW = 270;
+    const fanBoxH = 92;
 
-    ctx.fillStyle = "#020617";
+    ctx.fillStyle = "#FFFFFF";
+    ctx.shadowColor = "rgba(0, 0, 0, 0.06)";
+    ctx.shadowBlur = 6;
+    drawRoundedRect(ctx, fanBoxX, fanBoxY, fanBoxW, fanBoxH, 12);
+    ctx.fill();
+    ctx.shadowColor = "transparent";
+
+    ctx.strokeStyle = "#E2E8F0";
+    ctx.lineWidth = 1;
+    drawRoundedRect(ctx, fanBoxX, fanBoxY, fanBoxW, fanBoxH, 12);
+    ctx.stroke();
+
+    ctx.fillStyle = textColor;
     ctx.font = "bold 20px monospace";
     ctx.textAlign = "center";
-    ctx.fillText(data.fanNumber, barcodeBoxX + barcodeBoxW / 2, barcodeBoxY + 26);
+    ctx.fillText(data.fanNumber, fanBoxX + fanBoxW / 2, fanBoxY + 28);
     ctx.textAlign = "left";
-    drawCode128Barcode(ctx, data.fanNumber, barcodeBoxX + 12, barcodeBoxY + 34, barcodeBoxW - 24, 48);
+    drawCode128Barcode(ctx, data.fanNumber, fanBoxX + 16, fanBoxY + 36, fanBoxW - 32, 48);
   } else if (templateId === "template3") {
+    ctx.fillStyle = "#020617";
     ctx.font = "bold 26px NotoSansEthiopic, Arial, sans-serif";
     ctx.fillText(data.fullNameAmharic, 418, 190);
 
@@ -373,27 +392,34 @@ export async function renderFrontCardCanvas(
   // 4. Ghost photo
   if (photoDrawable) {
     if (templateId === "template2") {
-      const ghostW = 105;
-      const ghostH = 125;
-      const ghostX = 850;
-      const ghostY = 465;
-      const ghostCanvas = createCanvas(ghostW, ghostH);
-      const gCtx = ghostCanvas.getContext("2d");
-      gCtx.drawImage(photoDrawable, 0, 0, ghostW, ghostH);
-      gCtx.globalCompositeOperation = "destination-in";
-      gCtx.save();
-      gCtx.translate(ghostW / 2, ghostH / 2);
-      gCtx.scale(1, ghostH / ghostW);
-      const gMask = gCtx.createRadialGradient(0, 0, ghostW * 0.32, 0, 0, ghostW * 0.48);
-      gMask.addColorStop(0, "rgba(0, 0, 0, 1)");
-      gMask.addColorStop(1, "rgba(0, 0, 0, 0)");
-      gCtx.fillStyle = gMask;
-      gCtx.fillRect(-ghostW, -ghostW, ghostW * 2, ghostW * 2);
-      gCtx.restore();
+      // Circular/oval with strongly feathered, soft-faded vignette edges
+      const miniW = 115;
+      const miniH = 130;
+      const miniX = 835;
+      const miniY = 460;
+      const miniCanvas = createCanvas(miniW, miniH);
+      const mCtx = miniCanvas.getContext("2d");
+      mCtx.drawImage(photoDrawable, 0, 0, miniW, miniH);
+
+      mCtx.globalCompositeOperation = "destination-in";
+      mCtx.save();
+      mCtx.translate(miniW / 2, miniH / 2);
+      mCtx.scale(1, miniH / miniW);
+      const mGrad = mCtx.createRadialGradient(
+        0, 0, miniW * 0.20,
+        0, 0, miniW * 0.47
+      );
+      mGrad.addColorStop(0, "rgba(0, 0, 0, 1)");
+      mGrad.addColorStop(0.60, "rgba(0, 0, 0, 0.9)");
+      mGrad.addColorStop(0.85, "rgba(0, 0, 0, 0.4)");
+      mGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+      mCtx.fillStyle = mGrad;
+      mCtx.fillRect(-miniW, -miniW, miniW * 2, miniW * 2);
+      mCtx.restore();
 
       ctx.save();
-      ctx.globalAlpha = 0.72;
-      ctx.drawImage(ghostCanvas, ghostX, ghostY, ghostW, ghostH);
+      ctx.globalAlpha = 0.75;
+      ctx.drawImage(miniCanvas, miniX, miniY, miniW, miniH);
       ctx.restore();
     } else {
       ctx.save();
