@@ -224,16 +224,59 @@ export async function renderFrontCardCanvas(
     if (rawPhotoImg) {
       photoDrawable =
         photoStyle === "bw" ? convertServerImageToGrayscale(rawPhotoImg) : rawPhotoImg;
-      const photoW = 281;
-      const photoH = 400;
-      const photoX = 73 + Math.round((302 - photoW) / 2);
-      const photoY = 138 + Math.round((430 - photoH) / 2);
+      if (templateId === "template2") {
+        // Soft elliptical alpha-feathering gradient mask along edges for modern blue
+        const targetW = 290;
+        const targetH = 395;
+        const photoX = 65;
+        const photoY = 135;
 
-      ctx.save();
-      drawRoundedRect(ctx, photoX, photoY, photoW, photoH, 10);
-      ctx.clip();
-      ctx.drawImage(photoDrawable, photoX, photoY, photoW, photoH);
-      ctx.restore();
+        const featheredCanvas = createCanvas(targetW, targetH);
+        const fCtx = featheredCanvas.getContext("2d");
+        fCtx.imageSmoothingEnabled = true;
+
+        // Preserve aspect ratio (centered cover)
+        const aspect = rawPhotoImg.width / rawPhotoImg.height;
+        let drawW = targetW;
+        let drawH = targetW / aspect;
+        if (drawH < targetH) {
+          drawH = targetH;
+          drawW = targetH * aspect;
+        }
+        const offX = (targetW - drawW) / 2;
+        const offY = (targetH - drawH) / 2;
+        fCtx.drawImage(photoDrawable, offX, offY, drawW, drawH);
+
+        // Soft elliptical alpha feathering mask
+        fCtx.globalCompositeOperation = "destination-in";
+        fCtx.save();
+        fCtx.translate(targetW / 2, targetH / 2);
+        fCtx.scale(1, targetH / targetW);
+        const maskGrad = fCtx.createRadialGradient(
+          0, 0, targetW * 0.31,
+          0, 0, targetW * 0.48
+        );
+        maskGrad.addColorStop(0, "rgba(0, 0, 0, 1)");
+        maskGrad.addColorStop(0.75, "rgba(0, 0, 0, 0.95)");
+        maskGrad.addColorStop(0.9, "rgba(0, 0, 0, 0.5)");
+        maskGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+        fCtx.fillStyle = maskGrad;
+        fCtx.fillRect(-targetW, -targetW, targetW * 2, targetW * 2);
+        fCtx.restore();
+
+        ctx.drawImage(featheredCanvas, photoX, photoY, targetW, targetH);
+      } else {
+        const photoW = 281;
+        const photoH = 400;
+        const photoX = 73 + Math.round((302 - photoW) / 2);
+        const photoY = 138 + Math.round((430 - photoH) / 2);
+
+        ctx.save();
+        drawRoundedRect(ctx, photoX, photoY, photoW, photoH, 10);
+        ctx.clip();
+        ctx.drawImage(photoDrawable, photoX, photoY, photoW, photoH);
+        ctx.restore();
+      }
     }
   }
 
@@ -270,32 +313,34 @@ export async function renderFrontCardCanvas(
     ctx.textAlign = "left";
     drawCode128Barcode(ctx, data.fanNumber, barcodeBoxX + 13, barcodeBoxY + 34, barcodeBoxW - 26, 52);
   } else if (templateId === "template2") {
-    ctx.font = "bold 26px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(data.fullNameAmharic, 418, 208);
-
-    ctx.font = "bold 24px Arial, sans-serif";
-    ctx.fillText(data.fullNameEnglish, 418, 245);
-
+    // Front coordinates for modern blue template with guaranteed vertical gaps
     ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(`${data.dateOfBirthEth} | ${dobGregFormatted}`, 418, 325);
+    ctx.fillText(data.fullNameAmharic, 418, 210);
 
-    ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(`${data.sexAmharic} | ${data.sexEnglish}`, 418, 405);
+    ctx.font = "bold 21px Arial, sans-serif";
+    ctx.fillText(data.fullNameEnglish, 418, 240);
 
-    ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(`${data.dateOfExpiryEth} | ${expiryGregFormatted}`, 418, 485);
+    ctx.font = "bold 20px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.dateOfBirthEth} | ${dobGregFormatted}`, 418, 324);
 
-    // Barcode box and FAN
-    const barcodeBoxX = 450;
-    const barcodeBoxY = 515;
-    const barcodeBoxW = 380;
+    ctx.font = "bold 20px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.sexAmharic} | ${data.sexEnglish}`, 418, 384);
+
+    // Clear 19px gap below Sex line before Expiry label, value directly below label
+    ctx.font = "bold 20px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.dateOfExpiryEth} | ${expiryGregFormatted}`, 418, 448);
+
+    // Barcode box and FAN strictly inside white placeholder (x=461..773, y=510..596)
+    const barcodeBoxX = 461;
+    const barcodeBoxY = 510;
+    const barcodeBoxW = 312;
 
     ctx.fillStyle = "#020617";
-    ctx.font = "bold 22px monospace";
+    ctx.font = "bold 20px monospace";
     ctx.textAlign = "center";
     ctx.fillText(data.fanNumber, barcodeBoxX + barcodeBoxW / 2, barcodeBoxY + 26);
     ctx.textAlign = "left";
-    drawCode128Barcode(ctx, data.fanNumber, barcodeBoxX + 15, barcodeBoxY + 32, barcodeBoxW - 30, 48);
+    drawCode128Barcode(ctx, data.fanNumber, barcodeBoxX + 12, barcodeBoxY + 34, barcodeBoxW - 24, 48);
   } else if (templateId === "template3") {
     ctx.font = "bold 26px NotoSansEthiopic, Arial, sans-serif";
     ctx.fillText(data.fullNameAmharic, 418, 190);
@@ -325,14 +370,39 @@ export async function renderFrontCardCanvas(
     drawCode128Barcode(ctx, data.fanNumber, barcodeBoxX + 10, barcodeBoxY + 30, barcodeBoxW - 20, 52);
   }
 
-  // 4. Ghost photo (re-use already decoded portrait drawable)
+  // 4. Ghost photo
   if (photoDrawable) {
-    ctx.save();
-    ctx.globalAlpha = 0.75;
-    drawRoundedRect(ctx, 830, 460, 113, 134, 8);
-    ctx.clip();
-    ctx.drawImage(photoDrawable, 830, 460, 113, 134);
-    ctx.restore();
+    if (templateId === "template2") {
+      const ghostW = 105;
+      const ghostH = 125;
+      const ghostX = 850;
+      const ghostY = 465;
+      const ghostCanvas = createCanvas(ghostW, ghostH);
+      const gCtx = ghostCanvas.getContext("2d");
+      gCtx.drawImage(photoDrawable, 0, 0, ghostW, ghostH);
+      gCtx.globalCompositeOperation = "destination-in";
+      gCtx.save();
+      gCtx.translate(ghostW / 2, ghostH / 2);
+      gCtx.scale(1, ghostH / ghostW);
+      const gMask = gCtx.createRadialGradient(0, 0, ghostW * 0.32, 0, 0, ghostW * 0.48);
+      gMask.addColorStop(0, "rgba(0, 0, 0, 1)");
+      gMask.addColorStop(1, "rgba(0, 0, 0, 0)");
+      gCtx.fillStyle = gMask;
+      gCtx.fillRect(-ghostW, -ghostW, ghostW * 2, ghostW * 2);
+      gCtx.restore();
+
+      ctx.save();
+      ctx.globalAlpha = 0.72;
+      ctx.drawImage(ghostCanvas, ghostX, ghostY, ghostW, ghostH);
+      ctx.restore();
+    } else {
+      ctx.save();
+      ctx.globalAlpha = 0.75;
+      drawRoundedRect(ctx, 830, 460, 113, 134, 8);
+      ctx.clip();
+      ctx.drawImage(photoDrawable, 830, 460, 113, 134);
+      ctx.restore();
+    }
   }
 
   // 5. Vertical issue date on left margin
@@ -417,38 +487,29 @@ export async function renderBackCardCanvas(
       ctx.drawImage(qrImg, 462, 47, 490, 490);
     }
   } else if (templateId === "template2") {
-    ctx.font = "bold 25px Arial, sans-serif";
-    ctx.fillText(data.phoneNumber, 40, 95);
+    ctx.font = "bold 24px Arial, sans-serif";
+    ctx.fillText(data.phoneNumber, 45, 102);
 
-    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(data.regionAmharic, 40, 250);
-    ctx.font = "bold 21px Arial, sans-serif";
-    ctx.fillText(data.regionEnglish, 40, 282);
+    // Compact single-line address spacing leaving >160px clearance above FIN container
+    ctx.font = "bold 19px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.regionAmharic} / ${data.regionEnglish}`, 45, 275);
+    ctx.fillText(`${data.subcityAmharic} / ${data.subcityEnglish}`, 45, 305);
+    ctx.fillText(`${data.woredaAmharic} / ${data.woredaEnglish}`, 45, 335);
 
-    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(data.subcityAmharic, 40, 315);
-    ctx.font = "bold 21px Arial, sans-serif";
-    ctx.fillText(data.subcityEnglish, 40, 345);
-
-    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(data.woredaAmharic, 40, 380);
-    ctx.font = "bold 21px Arial, sans-serif";
-    ctx.fillText(data.woredaEnglish, 40, 412);
-
-    // FIN Number inside FIN box (FIN prefix is already on template2)
+    // FIN Number inside FIN box (to the right of pre-printed FIN label)
     ctx.font = "bold 22px Arial, monospace";
-    ctx.fillText(data.finNumber, 175, 548);
+    ctx.fillText(data.finNumber, 175, 538);
 
-    // SN Number inside SN badge
+    // SN Number inside existing SN pill badge
     ctx.font = "bold 19px Arial, monospace";
-    ctx.fillText(data.serialNumber || "65501482", 850, 612);
+    ctx.fillText(data.serialNumber || "65501482", 835, 582);
 
     // QR Code with clean rounded white backdrop for 100% scan reliability
     if (qrImg) {
       ctx.fillStyle = "#FFFFFF";
-      drawRoundedRect(ctx, 452, 38, 506, 506, 12);
+      drawRoundedRect(ctx, 462, 46, 485, 485, 16);
       ctx.fill();
-      ctx.drawImage(qrImg, 460, 46, 490, 490);
+      ctx.drawImage(qrImg, 472, 56, 465, 465);
     }
   } else if (templateId === "template3") {
     ctx.font = "bold 25px Arial, sans-serif";
