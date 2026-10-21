@@ -95,23 +95,43 @@ async function renderCard(templateId, frontFile, backFile) {
     ctx.textAlign = "left";
     drawCode128Barcode(ctx, "4952802570943927", barcodeBoxX + 10, barcodeBoxY + 34, barcodeBoxW - 20, 52);
   } else if (templateId === "template2") {
-    ctx.font = "bold 26px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText("አበበ በቀለ ደስታ", 418, 208);
-    ctx.font = "bold 24px Arial, sans-serif";
-    ctx.fillText("Abebe Bekele Desta", 418, 245);
-    ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText("12/04/1988 | 20/12/1995", 418, 325);
-    ctx.fillText("ወንድ | Male", 418, 405);
-    ctx.fillText("12/04/2000 | 20/12/2007", 418, 485);
+    // 1. FRONT: strict vertical grid line, spacing, and 10% barcode reduction
+    const textX = 398;
+    ctx.fillStyle = "#000000";
+    ctx.textAlign = "left";
 
-    const barcodeBoxX = 450;
-    const barcodeBoxY = 515;
-    const barcodeBoxW = 380;
-    ctx.font = "bold 22px monospace";
+    ctx.font = "22px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText("አበበ በቀለ ደስታ", textX, 210);
+
+    ctx.font = "20px Arial, sans-serif";
+    ctx.fillText("Abebe Bekele Desta", textX, 238);
+
+    ctx.font = "20px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText("12/04/1988 | 20/12/1995", textX, 320);
+
+    ctx.font = "20px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText("ወንድ | Male", textX, 388);
+
+    // SPACING: Increased vertical Y-offset between Sex (388) and Expiry (452)
+    ctx.font = "20px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText("12/04/2000 | 20/12/2007", textX, 452);
+
+    // BARCODE: Reduce "FAN" barcode box horizontally by 10% (270 -> 244px), aligned bottom-center
+    const barcodeBoxW = 244;
+    const barcodeBoxH = 96;
+    const barcodeBoxX = 460;
+    const barcodeBoxY = 502;
+
+    ctx.fillStyle = "#FFFFFF";
+    drawRoundedRect(ctx, barcodeBoxX, barcodeBoxY, barcodeBoxW, barcodeBoxH, 10);
+    ctx.fill();
+
+    ctx.fillStyle = "#000000";
+    ctx.font = "20px monospace";
     ctx.textAlign = "center";
     ctx.fillText("4952 8025 7094 3927", barcodeBoxX + barcodeBoxW / 2, barcodeBoxY + 26);
     ctx.textAlign = "left";
-    drawCode128Barcode(ctx, "4952802570943927", barcodeBoxX + 15, barcodeBoxY + 32, barcodeBoxW - 30, 48);
+    drawCode128Barcode(ctx, "4952802570943927", barcodeBoxX + 12, barcodeBoxY + 32, barcodeBoxW - 24, 54);
   } else if (templateId === "template3") {
     ctx.font = "bold 26px NotoSansEthiopic, Arial, sans-serif";
     ctx.fillText("አበበ በቀለ ደስታ", 418, 190);
@@ -174,35 +194,85 @@ async function renderCard(templateId, frontFile, backFile) {
     ctx.fillText("65501482", backX + 835, 597);
     ctx.drawImage(qrImg, backX + 462, 47, 490, 490);
   } else if (templateId === "template2") {
-    ctx.font = "bold 25px Arial, sans-serif";
-    ctx.fillText("+251911223344", backX + 40, 95);
-    // Nationality is already embedded in template 2 background
-    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText("አዲስ አበባ", backX + 40, 250);
-    ctx.font = "bold 21px Arial, sans-serif";
-    ctx.fillText("Addis Ababa", backX + 40, 282);
-    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText("ቦሌ", backX + 40, 315);
-    ctx.font = "bold 21px Arial, sans-serif";
-    ctx.fillText("Bole", backX + 40, 345);
-    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText("ወረዳ 03", backX + 40, 380);
-    ctx.font = "bold 21px Arial, sans-serif";
-    ctx.fillText("Woreda 03", backX + 40, 412);
+    // 2. BACK: strict vertical grid line, address spacing, centered FIN & SN
+    const backTextX = backX + 60;
+    ctx.fillStyle = "#000000";
+    ctx.textAlign = "left";
 
-    // FIN Box
-    ctx.font = "bold 22px Arial, monospace";
-    ctx.fillText("9876 5432 1098", backX + 175, 548);
+    // Phone
+    ctx.font = "23px Arial, sans-serif";
+    ctx.fillText("0943599259", backTextX, 82);
 
-    // SN Box
-    ctx.font = "bold 19px Arial, monospace";
-    ctx.fillText("65501482", backX + 850, 612);
+    // Self declared with correct Ge'ez 'ጠ'
+    ctx.font = "14.5px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText("(በተገለጠው መሰረት / Self Declared)", backTextX, 145);
+
+    // Stacked address lines with equal vertical spacing (28px step), ample padding above footer
+    ctx.font = "19px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText("አማራ", backTextX, 246);
+    ctx.font = "19px Arial, sans-serif";
+    ctx.fillText("Amhara", backTextX, 274);
+
+    ctx.font = "19px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText("ምዕራብ ጎጃም ዞን", backTextX, 302);
+    ctx.font = "19px Arial, sans-serif";
+    ctx.fillText("West Gojjam Zone", backTextX, 330);
+
+    ctx.font = "19px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText("ሰሜን ሜጫ", backTextX, 358);
+    ctx.font = "19px Arial, sans-serif";
+    ctx.fillText("Semen Mecha", backTextX, 386);
+
+    // CENTER FIN: Vertically and horizontally center numeric string inside white box
+    const finBoxX = backX + 169;
+    const finBoxY = 513;
+    const finBoxW = 253;
+    const finBoxH = 51;
+
+    ctx.save();
+    ctx.font = "22px Arial, monospace";
+    ctx.fillStyle = "#000000";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("385935169405", finBoxX + finBoxW / 2, finBoxY + finBoxH / 2);
+    ctx.restore();
+
+    // CENTER SN: Symmetrically center "SN : 65501482" inside white pill box with even padding
+    const snBoxX = backX + 765;
+    const snBoxY = 552;
+    const snBoxW = 205;
+    const snBoxH = 50;
+
+    ctx.fillStyle = "#FFFFFF";
+    drawRoundedRect(ctx, snBoxX, snBoxY, snBoxW, snBoxH, 8);
+    ctx.fill();
+
+    const snLabel = "SN : ";
+    const snVal = "65501482";
+    ctx.font = "18px Arial, sans-serif";
+    const labelW = ctx.measureText(snLabel).width;
+    ctx.font = "18px Arial, monospace";
+    const valW = ctx.measureText(snVal).width;
+    const totalSnW = labelW + valW;
+    const snStartX = snBoxX + (snBoxW - totalSnW) / 2;
+    const snCenterY = snBoxY + snBoxH / 2;
+
+    ctx.save();
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#945722";
+    ctx.font = "18px Arial, sans-serif";
+    ctx.fillText(snLabel, snStartX, snCenterY);
+    ctx.fillStyle = "#000000";
+    ctx.font = "18px Arial, monospace";
+    ctx.fillText(snVal, snStartX + labelW, snCenterY);
+    ctx.restore();
 
     // QR with white backdrop
     ctx.fillStyle = "#FFFFFF";
-    drawRoundedRect(ctx, backX + 452, 38, 506, 506, 12);
+    drawRoundedRect(ctx, backX + 462, 46, 485, 485, 16);
     ctx.fill();
-    ctx.drawImage(qrImg, backX + 460, 46, 490, 490);
+    ctx.drawImage(qrImg, backX + 472, 56, 465, 465);
   } else if (templateId === "template3") {
     ctx.font = "bold 25px Arial, sans-serif";
     ctx.fillText("+251911223344", backX + 35, 140);
