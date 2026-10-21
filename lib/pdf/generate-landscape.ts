@@ -410,21 +410,21 @@ export async function renderBackCardToCanvas(data: EthiopianIdData): Promise<HTM
   ctx.fillText(`FIN  ${data.finNumber}`, finBoxX + finBoxW / 2, finBoxY + finBoxH / 2);
   ctx.restore();
 
-  // 4. CENTER SN: Symmetrically centered inside white SN badge
-  const snBoxX = 765;
-  const snBoxY = 552;
-  const snBoxW = 205;
-  const snBoxH = 50;
+  // 4. CENTER SN: Positioned at bottom right in footer row
+  const snBoxX = 802;
+  const snBoxY = 576;
+  const snBoxW = 186;
+  const snBoxH = 34;
 
   ctx.fillStyle = "#FFFFFF";
-  drawRoundedRect(ctx, snBoxX, snBoxY, snBoxW, snBoxH, 8);
+  drawRoundedRect(ctx, snBoxX, snBoxY, snBoxW, snBoxH, 6);
   ctx.fill();
 
   const snLabel = "SN : ";
   const snVal = data.serialNumber || "65501482";
-  ctx.font = "18px 'Inter', sans-serif";
+  ctx.font = "bold 18px 'Inter', sans-serif";
   const labelW = ctx.measureText(snLabel).width;
-  ctx.font = "18px 'Inter', monospace";
+  ctx.font = "bold 18px 'Inter', monospace";
   const valW = ctx.measureText(snVal).width;
   const totalSnW = labelW + valW;
   const snStartX = snBoxX + (snBoxW - totalSnW) / 2;
@@ -433,11 +433,11 @@ export async function renderBackCardToCanvas(data: EthiopianIdData): Promise<HTM
   ctx.save();
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
-  ctx.fillStyle = "#945722";
-  ctx.font = "18px 'Inter', sans-serif";
+  ctx.fillStyle = "#8c7b3e";
+  ctx.font = "bold 18px 'Inter', sans-serif";
   ctx.fillText(snLabel, snStartX, snCenterY);
   ctx.fillStyle = "#000000";
-  ctx.font = "18px 'Inter', monospace";
+  ctx.font = "bold 18px 'Inter', monospace";
   ctx.fillText(snVal, snStartX + labelW, snCenterY);
   ctx.restore();
 

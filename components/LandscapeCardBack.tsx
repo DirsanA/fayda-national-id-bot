@@ -72,9 +72,9 @@ export function LandscapeCardBack({ data, className = "" }: LandscapeCardBackPro
       </div>
 
       {/* 5. CENTER SN: Symmetrically centered inside bottom-right white pill box */}
-      <div className="absolute right-[4.2%] bottom-[5.3%] w-[20.2%] h-[7.8%] bg-white rounded-md border border-slate-200 flex items-center justify-center pointer-events-none text-[9px] sm:text-[10px]">
-        <span className="text-[#945722] font-medium mr-1">SN : </span>
-        <span className="text-black font-mono font-normal">{data.serialNumber || "65501482"}</span>
+      <div className="absolute right-[2.5%] bottom-[4.4%] w-[18.4%] h-[5.4%] bg-white rounded-[4px] border border-slate-200 flex items-center justify-center pointer-events-none text-[8.5px] sm:text-[9.5px]">
+        <span className="text-[#8c7b3e] font-bold mr-1">SN : </span>
+        <span className="text-black font-mono font-bold">{data.serialNumber || "65501482"}</span>
       </div>
     </div>
   );

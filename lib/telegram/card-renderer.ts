@@ -89,177 +89,140 @@ function drawCode128Barcode(
   });
 }
 
-function isolateSubjectWithFeathering(srcCanvas: any, isMini: boolean = false) {
+/**
+ * High-quality background removal preserving sharp facial details, natural hair,
+ * skin tone, clothing, and natural edges with clean RGBA transparency.
+ * Avoids blur, artificial vignettes, halos, or facial distortion.
+ */
+function isolateSubjectClean(srcCanvas: any) {
   const w = srcCanvas.width;
   const h = srcCanvas.height;
   const ctx = srcCanvas.getContext("2d");
   const imgData = ctx.getImageData(0, 0, w, h);
   const data = imgData.data;
 
-  // 1. Sample background from top corners
-  let bgR = 0, bgG = 0, bgB = 0, count = 0;
-  const sampleW = Math.max(5, Math.floor(w * 0.12));
-  const sampleH = Math.max(5, Math.floor(h * 0.10));
+  // 1. Check if image already has transparent background in corners
+  let transparentCorners = 0;
+  const cornerChecks = [
+    [0, 0], [w - 1, 0], [0, 5], [w - 1, 5],
+    [Math.floor(w * 0.1), 0], [Math.floor(w * 0.9), 0]
+  ];
+  for (const [cx, cy] of cornerChecks) {
+    if (data[(cy * w + cx) * 4 + 3] < 50) transparentCorners++;
+  }
+  if (transparentCorners >= 3) {
+    return srcCanvas;
+  }
+
+  // 2. Sample background color across top edge and upper corners
+  let bgR = 0, bgG = 0, bgB = 0, bgCount = 0;
+  const sampleW = Math.max(4, Math.floor(w * 0.15));
+  const sampleH = Math.max(4, Math.floor(h * 0.08));
 
   for (let y = 0; y < sampleH; y++) {
     for (let x = 0; x < sampleW; x++) {
-      const idx1 = (y * w + x) * 4;
-      if (data[idx1 + 3] > 100) {
-        bgR += data[idx1]; bgG += data[idx1 + 1]; bgB += data[idx1 + 2]; count++;
-      }
-      const idx2 = (y * w + (w - 1 - x)) * 4;
-      if (data[idx2 + 3] > 100) {
-        bgR += data[idx2]; bgG += data[idx2 + 1]; bgB += data[idx2 + 2]; count++;
-      }
+      const idxL = (y * w + x) * 4;
+      bgR += data[idxL]; bgG += data[idxL + 1]; bgB += data[idxL + 2]; bgCount++;
+      const idxR = (y * w + (w - 1 - x)) * 4;
+      bgR += data[idxR]; bgG += data[idxR + 1]; bgB += data[idxR + 2]; bgCount++;
     }
   }
+  bgR /= bgCount; bgG /= bgCount; bgB /= bgCount;
 
-  if (count > 0) {
-    bgR /= count; bgG /= count; bgB /= count;
-  }
+  // If background is very dark, skip removal
+  if ((bgR + bgG + bgB) / 3 < 80) return srcCanvas;
 
-  // Check if background in corners is light indoor studio/wall
-  const isIndoorBg = (bgR + bgG + bgB) / 3 > 140;
-  const bgMask = new Uint8Array(w * h);
-
-  if (isIndoorBg) {
-    const visited = new Uint8Array(w * h);
-    const queue: number[] = [];
-
-    const colorDist = (r: number, g: number, b: number) => {
-      const dr = r - bgR, dg = g - bgG, db = b - bgB;
-      return Math.sqrt(dr * dr + dg * dg + db * db);
-    };
-
-    const maxSideY = Math.floor(h * 0.68);
-
-    // Seed top edge
-    for (let x = 0; x < w; x++) {
-      const idx = (0 * w + x) * 4;
-      if (colorDist(data[idx], data[idx + 1], data[idx + 2]) < 55) {
-        visited[x] = 1;
-        bgMask[x] = 1;
-        queue.push(x);
-      }
-    }
-
-    // Seed upper side edges
-    for (let y = 1; y < maxSideY; y++) {
-      const idxL = (y * w + 0) * 4;
-      if (colorDist(data[idxL], data[idxL + 1], data[idxL + 2]) < 55 && !visited[y * w]) {
-        visited[y * w] = 1;
-        bgMask[y * w] = 1;
-        queue.push(y * w);
-      }
-      const idxR = (y * w + (w - 1)) * 4;
-      if (colorDist(data[idxR], data[idxR + 1], data[idxR + 2]) < 55 && !visited[y * w + w - 1]) {
-        visited[y * w + w - 1] = 1;
-        bgMask[y * w + w - 1] = 1;
-        queue.push(y * w + w - 1);
-      }
-    }
-
-    let head = 0;
-    while (head < queue.length) {
-      const p = queue[head++];
-      const px = p % w;
-      const py = Math.floor(p / w);
-
-      if (py > maxSideY) continue;
-
-      const neighbors = [
-        px > 0 ? p - 1 : -1,
-        px < w - 1 ? p + 1 : -1,
-        py > 0 ? p - w : -1,
-        py < h - 1 ? p + w : -1
-      ];
-
-      for (const np of neighbors) {
-        if (np >= 0 && !visited[np]) {
-          visited[np] = 1;
-          const nIdx = np * 4;
-          if (colorDist(data[nIdx], data[nIdx + 1], data[nIdx + 2]) < 55) {
-            bgMask[np] = 1;
-            queue.push(np);
-          }
-        }
-      }
+  let sumSq = 0;
+  for (let y = 0; y < sampleH; y++) {
+    for (let x = 0; x < sampleW; x++) {
+      const idxL = (y * w + x) * 4;
+      const dL = Math.hypot(data[idxL] - bgR, data[idxL + 1] - bgG, data[idxL + 2] - bgB);
+      const idxR = (y * w + (w - 1 - x)) * 4;
+      const dR = Math.hypot(data[idxR] - bgR, data[idxR + 1] - bgG, data[idxR + 2] - bgB);
+      sumSq += (dL * dL + dR * dR);
     }
   }
+  const stdDev = Math.sqrt(sumSq / bgCount);
+  const distThresh = Math.max(26, Math.min(54, stdDev * 2.8 + 18));
+  const solidThresh = distThresh * 0.72;
 
-  // Soft feathering alpha map
-  const alphaMap = new Float32Array(w * h);
-  for (let i = 0; i < w * h; i++) {
-    alphaMap[i] = bgMask[i] ? 0.0 : 1.0;
-  }
+  const colorDist = (r: number, g: number, b: number) => Math.hypot(r - bgR, g - bgG, b - bgB);
 
-  // Blur on alpha map
-  const blurR = isMini ? 2 : 4;
-  const tempA = new Float32Array(w * h);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      let sum = 0, c = 0;
-      for (let k = -blurR; k <= blurR; k++) {
-        const nx = x + k;
-        if (nx >= 0 && nx < w) { sum += alphaMap[y * w + nx]; c++; }
-      }
-      tempA[y * w + x] = sum / c;
-    }
-  }
+  const isHumanForeground = (r: number, g: number, b: number) => {
+    if (r < 75 && g < 75 && b < 75) return true; // Dark hair
+    if (r > b + 28 && r > 85 && g > 60) return true; // Skin
+    return false;
+  };
+
+  const visited = new Uint8Array(w * h);
+  const queue = new Int32Array(w * h);
+  let qHead = 0, qTail = 0;
+  const maxDepthY = Math.floor(h * 0.80);
+
+  // Seed top edge
   for (let x = 0; x < w; x++) {
-    for (let y = 0; y < h; y++) {
-      let sum = 0, c = 0;
-      for (let k = -blurR; k <= blurR; k++) {
-        const ny = y + k;
-        if (ny >= 0 && ny < h) { sum += tempA[ny * w + x]; c++; }
-      }
-      alphaMap[y * w + x] = sum / c;
+    const idx = (0 * w + x) * 4;
+    const r = data[idx], g = data[idx + 1], b = data[idx + 2];
+    if (!isHumanForeground(r, g, b) && colorDist(r, g, b) < distThresh) {
+      visited[x] = 1;
+      queue[qTail++] = x;
     }
   }
 
-  // Soft feathered alpha gradient around hair, neck, and jacket to blend into the card's wavy patterns
-  const fadeLeft = isMini ? 12 : 28;
-  const fadeRight = isMini ? 12 : 30;
-  const fadeTop = isMini ? 14 : 36;
-  const fadeBottom = isMini ? 18 : 34;
-  const cornerR = isMini ? 25 : 55;
+  // Seed upper sides
+  for (let y = 1; y < maxDepthY; y++) {
+    const pL = y * w + 0;
+    const idxL = pL * 4;
+    if (!visited[pL] && !isHumanForeground(data[idxL], data[idxL + 1], data[idxL + 2]) && colorDist(data[idxL], data[idxL + 1], data[idxL + 2]) < distThresh) {
+      visited[pL] = 1;
+      queue[qTail++] = pL;
+    }
+    const pR = y * w + (w - 1);
+    const idxR = pR * 4;
+    if (!visited[pR] && !isHumanForeground(data[idxR], data[idxR + 1], data[idxR + 2]) && colorDist(data[idxR], data[idxR + 1], data[idxR + 2]) < distThresh) {
+      visited[pR] = 1;
+      queue[qTail++] = pR;
+    }
+  }
 
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      let ax = 1.0;
-      if (x < fadeLeft) ax = Math.sin((x / fadeLeft) * (Math.PI / 2));
-      else if (x > w - fadeRight) ax = Math.sin(((w - x) / fadeRight) * (Math.PI / 2));
+  while (qHead < qTail) {
+    const p = queue[qHead++];
+    const px = p % w;
+    const py = Math.floor(p / w);
 
-      let ay = 1.0;
-      if (y < fadeTop) ay = Math.sin((y / fadeTop) * (Math.PI / 2));
-      else if (y > h - fadeBottom) ay = Math.sin(((h - y) / fadeBottom) * (Math.PI / 2));
+    if (py >= maxDepthY) continue;
 
-      let corner = 1.0;
-      if (y < cornerR) {
-        if (x < cornerR) {
-          const d = Math.sqrt((cornerR - x) ** 2 + (cornerR - y) ** 2);
-          if (d > cornerR) corner = Math.max(0, 1 - (d - cornerR) / 20);
-        } else if (x > w - cornerR) {
-          const d = Math.sqrt((x - (w - cornerR)) ** 2 + (cornerR - y) ** 2);
-          if (d > cornerR) corner = Math.max(0, 1 - (d - cornerR) / 20);
+    const neighbors = [
+      px > 0 ? p - 1 : -1,
+      px < w - 1 ? p + 1 : -1,
+      py > 0 ? p - w : -1,
+      py < maxDepthY ? p + w : -1
+    ];
+
+    for (const np of neighbors) {
+      if (np >= 0 && !visited[np]) {
+        const nIdx = np * 4;
+        const nr = data[nIdx], ng = data[nIdx + 1], nb = data[nIdx + 2];
+        if (!isHumanForeground(nr, ng, nb) && colorDist(nr, ng, nb) < distThresh) {
+          visited[np] = 1;
+          queue[qTail++] = np;
         }
       }
-
-      alphaMap[y * w + x] *= (ax * ay * corner);
     }
   }
 
-  for (let i = 0; i < w * h; i++) {
-    const idx = i * 4;
-    const a = alphaMap[i];
-    if (a > 0.05) {
-      let r = data[idx], g = data[idx + 1], b = data[idx + 2];
-      r = Math.min(255, Math.round(r * 1.05 + 3));
-      g = Math.min(255, Math.round(g * 1.05 + 3));
-      b = Math.min(255, Math.round(b * 1.05 + 3));
-      data[idx] = r; data[idx + 1] = g; data[idx + 2] = b;
+  // Apply crisp anti-aliased transparency to background pixels
+  for (let p = 0; p < w * h; p++) {
+    if (visited[p]) {
+      const idx = p * 4;
+      const d = colorDist(data[idx], data[idx + 1], data[idx + 2]);
+      if (d <= solidThresh) {
+        data[idx + 3] = 0; // True transparent
+      } else {
+        const factor = (d - solidThresh) / (distThresh - solidThresh);
+        data[idx + 3] = Math.round(Math.max(0, Math.min(255, factor * 255)));
+      }
     }
-    data[idx + 3] = Math.round(a * 255);
   }
 
   ctx.putImageData(imgData, 0, 0);
@@ -394,25 +357,33 @@ export async function renderFrontCardCanvas(
     ctx.drawImage(templateImg, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }
 
-  // 2. Primary Portrait Photo (decode base64 once and reuse for ghost photo)
+  // 2. Primary Portrait Photo (high-quality clean background removal, sized to match Reference 2)
   let photoDrawable: any = null;
   if (data.photoUrl) {
     const rawPhotoImg = await loadServerImage(data.photoUrl);
     if (rawPhotoImg) {
+      // 1. Perform background removal on the full-resolution source image
+      const cleanPhotoCanvas = createCanvas(rawPhotoImg.width, rawPhotoImg.height);
+      const cleanCtx = cleanPhotoCanvas.getContext("2d");
+      cleanCtx.imageSmoothingEnabled = true;
+      cleanCtx.drawImage(rawPhotoImg, 0, 0);
+      isolateSubjectClean(cleanPhotoCanvas);
+
       photoDrawable =
-        photoStyle === "bw" ? convertServerImageToGrayscale(rawPhotoImg) : rawPhotoImg;
+        photoStyle === "bw" ? convertServerImageToGrayscale(cleanPhotoCanvas) : cleanPhotoCanvas;
       
-      const targetW = 320;
-      const targetH = 430;
-      const photoX = 55;
-      const photoY = 125;
+      const isT2 = templateId === "template2";
+      const targetW = isT2 ? 282 : 320;
+      const targetH = isT2 ? 354 : 430;
+      const photoX = isT2 ? 72 : 55;
+      const photoY = isT2 ? 198 : 125;
 
       const pCanvas = createCanvas(targetW, targetH);
       const pCtx = pCanvas.getContext("2d");
       pCtx.imageSmoothingEnabled = true;
 
-      // Preserve natural aspect ratio (centered cover)
-      const aspect = rawPhotoImg.width / rawPhotoImg.height;
+      // Preserve natural aspect ratio without distortion
+      const aspect = photoDrawable.width / photoDrawable.height;
       let drawW = targetW;
       let drawH = targetW / aspect;
       if (drawH < targetH) {
@@ -422,9 +393,6 @@ export async function renderFrontCardCanvas(
       const offX = (targetW - drawW) / 2;
       const offY = (targetH - drawH) / 2;
       pCtx.drawImage(photoDrawable, offX, offY, drawW, drawH);
-
-      // Isolate subject from indoor backdrop with feathered alpha vignette
-      isolateSubjectWithFeathering(pCanvas, false);
 
       ctx.drawImage(pCanvas, photoX, photoY);
     }
@@ -548,12 +516,13 @@ export async function renderFrontCardCanvas(
     drawCode128Barcode(ctx, data.fanNumber, barcodeBoxX + 10, barcodeBoxY + 30, barcodeBoxW - 20, 52);
   }
 
-  // 4. Ghost photo - soft feathered alpha gradient blending into card's wavy patterns
+  // 4. Ghost photo - clean, sharp transparent portrait proportioned to match Reference 2
   if (photoDrawable) {
-    const miniW = 115;
-    const miniH = 135;
-    const miniX = 830;
-    const miniY = 460;
+    const isT2 = templateId === "template2";
+    const miniW = isT2 ? 116 : 115;
+    const miniH = isT2 ? 150 : 135;
+    const miniX = isT2 ? 792 : 830;
+    const miniY = isT2 ? 445 : 460;
     const miniCanvas = createCanvas(miniW, miniH);
     const mCtx = miniCanvas.getContext("2d");
     mCtx.imageSmoothingEnabled = true;
@@ -567,11 +536,8 @@ export async function renderFrontCardCanvas(
     }
     mCtx.drawImage(photoDrawable, (miniW - drawW) / 2, (miniH - drawH) / 2, drawW, drawH);
 
-    // Isolate subject for mini portrait with feathered alpha gradient
-    isolateSubjectWithFeathering(miniCanvas, true);
-
     ctx.save();
-    ctx.globalAlpha = 0.82;
+    ctx.globalAlpha = isT2 ? 0.88 : 0.82;
     ctx.drawImage(miniCanvas, miniX, miniY);
     ctx.restore();
   }
@@ -707,21 +673,21 @@ export async function renderBackCardCanvas(
     ctx.fillText(data.finNumber, finBoxX + finBoxW / 2, finBoxY + finBoxH / 2);
     ctx.restore();
 
-    // CENTER SN: Symmetrically center "SN : 65501482" inside bottom-right white pill box with even padding.
-    const snBoxX = 765;
-    const snBoxY = 552;
-    const snBoxW = 205;
-    const snBoxH = 50;
+    // SN NUMBER BOX: Positioned in the bottom-right footer row exactly like Reference Image 2
+    const snBoxX = 802;
+    const snBoxY = 576;
+    const snBoxW = 186;
+    const snBoxH = 34;
 
     ctx.fillStyle = "#FFFFFF";
-    drawRoundedRect(ctx, snBoxX, snBoxY, snBoxW, snBoxH, 8);
+    drawRoundedRect(ctx, snBoxX, snBoxY, snBoxW, snBoxH, 6);
     ctx.fill();
 
     const snLabel = "SN : ";
     const snVal = data.serialNumber || "65501482";
-    ctx.font = "18px Arial, sans-serif";
+    ctx.font = "bold 18px Arial, sans-serif";
     const labelW = ctx.measureText(snLabel).width;
-    ctx.font = "18px Arial, monospace";
+    ctx.font = "bold 18px Arial, monospace";
     const valW = ctx.measureText(snVal).width;
     const totalSnW = labelW + valW;
     const snStartX = snBoxX + (snBoxW - totalSnW) / 2;
@@ -730,11 +696,11 @@ export async function renderBackCardCanvas(
     ctx.save();
     ctx.textBaseline = "middle";
     ctx.textAlign = "left";
-    ctx.fillStyle = "#945722";
-    ctx.font = "18px Arial, sans-serif";
+    ctx.fillStyle = "#8c7b3e";
+    ctx.font = "bold 18px Arial, sans-serif";
     ctx.fillText(snLabel, snStartX, snCenterY);
     ctx.fillStyle = textColor;
-    ctx.font = "18px Arial, monospace";
+    ctx.font = "bold 18px Arial, monospace";
     ctx.fillText(snVal, snStartX + labelW, snCenterY);
     ctx.restore();
 
