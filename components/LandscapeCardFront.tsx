@@ -30,7 +30,7 @@ export function LandscapeCardFront({ data, className = "" }: LandscapeCardFrontP
 
       {/* 2. Extracted Portrait Photo without background */}
       {data.photoUrl && (
-        <div className="absolute left-[7.1%] top-[31.1%] w-[27.9%] h-[55.5%] rounded-md overflow-hidden">
+        <div className="absolute left-[7.2%] top-[21.6%] w-[29.9%] h-[67.4%] rounded-lg overflow-hidden">
           <img
             src={data.photoUrl}
             alt={`Portrait of ${data.fullNameEnglish}`}
@@ -40,44 +40,43 @@ export function LandscapeCardFront({ data, className = "" }: LandscapeCardFrontP
       )}
 
       {/* 3. Dynamic Text Overlays directly on pristine background */}
-      <div className="absolute left-[41.3%] top-[27.5%] w-[38%] flex flex-col space-y-[2.0%] leading-tight pointer-events-none">
+      <div className="absolute left-[41.3%] top-[28.0%] w-[38%] flex flex-col space-y-[2.2%] leading-tight pointer-events-none">
         <div>
-          <p className="text-[12.5px] sm:text-[14px] font-medium text-black tracking-tight leading-tight">
+          <p className="text-[12.5px] sm:text-[14px] font-extrabold text-slate-950 tracking-tight leading-tight">
             {data.fullNameAmharic}
           </p>
-          <p className="text-[11.5px] sm:text-[13px] font-normal text-black tracking-tight leading-tight">
+          <p className="text-[11.5px] sm:text-[13px] font-bold text-slate-900 tracking-tight leading-tight">
             {data.fullNameEnglish}
           </p>
         </div>
 
-        <div className="pt-[4.0%]">
-          <p className="text-[11px] sm:text-[12px] font-normal text-black leading-tight">
+        <div className="pt-[4.5%]">
+          <p className="text-[11px] sm:text-[12.5px] font-bold text-slate-900 leading-tight">
             {data.dateOfBirthEth} <span className="font-normal text-slate-400">|</span> {dobGreg}
           </p>
         </div>
 
         <div className="pt-[4.0%]">
-          <p className="text-[11px] sm:text-[12px] font-normal text-black leading-tight">
+          <p className="text-[11px] sm:text-[12.5px] font-bold text-slate-900 leading-tight">
             {data.sexAmharic} <span className="font-normal text-slate-400">|</span> {data.sexEnglish}
           </p>
         </div>
 
-        {/* Clear 15-20px vertical Y-offset separation between Sex and Expiry */}
-        <div className="pt-[5.5%]">
-          <p className="text-[11px] sm:text-[12px] font-normal text-black leading-tight">
+        <div className="pt-[3.5%]">
+          <p className="text-[11px] sm:text-[12.5px] font-bold text-slate-900 leading-tight">
             {data.dateOfExpiryEth} <span className="font-normal text-slate-400">|</span> {expiryGreg}
           </p>
         </div>
       </div>
 
-      {/* 4. Extracted Barcode & FAN Number inside white container (reduced by 10% to prevent collision, aligned bottom-center) */}
-      <div className="absolute left-[45.8%] top-[77.7%] w-[29.2%] h-[15.0%]">
+      {/* 4. Extracted Barcode & FAN Number inside white container */}
+      <div className="absolute left-[45.1%] top-[77.7%] w-[32.4%] h-[15.0%]">
         <BarcodeDisplay fanNumber={data.fanNumber} className="w-full h-full" />
       </div>
 
       {/* 5. Extracted Ghost Photo (positioned below Fayda watermark) */}
       {data.photoUrl && (
-        <div className="absolute left-[78.3%] top-[69.7%] w-[11.5%] h-[23.5%] rounded-sm overflow-hidden opacity-85 pointer-events-none">
+        <div className="absolute left-[82.1%] top-[72.1%] w-[11.2%] h-[21.0%] rounded-md overflow-hidden opacity-75 pointer-events-none">
           <img src={data.photoUrl} alt="Ghost portrait" className="w-full h-full object-cover" />
         </div>
       )}

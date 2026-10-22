@@ -372,29 +372,42 @@ export async function renderFrontCardCanvas(
       photoDrawable =
         photoStyle === "bw" ? convertServerImageToGrayscale(cleanPhotoCanvas) : cleanPhotoCanvas;
       
-      const isT2 = templateId === "template2";
-      const targetW = isT2 ? 282 : 320;
-      const targetH = isT2 ? 354 : 430;
-      const photoX = isT2 ? 72 : 55;
-      const photoY = isT2 ? 198 : 125;
+      if (templateId === "template1") {
+        const photoW = 281;
+        const photoH = 400;
+        const photoX = 73 + Math.round((302 - photoW) / 2);
+        const photoY = 138 + Math.round((430 - photoH) / 2);
 
-      const pCanvas = createCanvas(targetW, targetH);
-      const pCtx = pCanvas.getContext("2d");
-      pCtx.imageSmoothingEnabled = true;
+        ctx.save();
+        drawRoundedRect(ctx, photoX, photoY, photoW, photoH, 10);
+        ctx.clip();
+        ctx.drawImage(photoDrawable, photoX, photoY, photoW, photoH);
+        ctx.restore();
+      } else {
+        const isT2 = templateId === "template2";
+        const targetW = isT2 ? 282 : 320;
+        const targetH = isT2 ? 354 : 430;
+        const photoX = isT2 ? 72 : 55;
+        const photoY = isT2 ? 198 : 125;
 
-      // Preserve natural aspect ratio without distortion
-      const aspect = photoDrawable.width / photoDrawable.height;
-      let drawW = targetW;
-      let drawH = targetW / aspect;
-      if (drawH < targetH) {
-        drawH = targetH;
-        drawW = targetH * aspect;
+        const pCanvas = createCanvas(targetW, targetH);
+        const pCtx = pCanvas.getContext("2d");
+        pCtx.imageSmoothingEnabled = true;
+
+        // Preserve natural aspect ratio without distortion
+        const aspect = photoDrawable.width / photoDrawable.height;
+        let drawW = targetW;
+        let drawH = targetW / aspect;
+        if (drawH < targetH) {
+          drawH = targetH;
+          drawW = targetH * aspect;
+        }
+        const offX = (targetW - drawW) / 2;
+        const offY = (targetH - drawH) / 2;
+        pCtx.drawImage(photoDrawable, offX, offY, drawW, drawH);
+
+        ctx.drawImage(pCanvas, photoX, photoY);
       }
-      const offX = (targetW - drawW) / 2;
-      const offY = (targetH - drawH) / 2;
-      pCtx.drawImage(photoDrawable, offX, offY, drawW, drawH);
-
-      ctx.drawImage(pCanvas, photoX, photoY);
     }
   }
 
@@ -404,34 +417,34 @@ export async function renderFrontCardCanvas(
   const textColor = "#000000";
 
   if (templateId === "template1") {
-    ctx.fillStyle = textColor;
+    ctx.fillStyle = "#020617";
     ctx.textAlign = "left";
-    ctx.font = "24px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(data.fullNameAmharic, 418, 196);
+    ctx.font = "bold 26px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(data.fullNameAmharic, 418, 207);
 
-    ctx.font = "22px Arial, sans-serif";
-    ctx.fillText(data.fullNameEnglish, 418, 230);
+    ctx.font = "bold 24px Arial, sans-serif";
+    ctx.fillText(data.fullNameEnglish, 418, 250);
 
-    ctx.font = "21px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(`${data.dateOfBirthEth} | ${dobGregFormatted}`, 418, 330);
+    ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.dateOfBirthEth} | ${dobGregFormatted}`, 418, 334);
 
-    ctx.font = "21px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(`${data.sexAmharic} | ${data.sexEnglish}`, 418, 394);
+    ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.sexAmharic} | ${data.sexEnglish}`, 418, 405);
 
-    ctx.font = "21px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(`${data.dateOfExpiryEth} | ${expiryGregFormatted}`, 418, 460);
+    ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.dateOfExpiryEth} | ${expiryGregFormatted}`, 418, 468);
 
-    // Barcode box and FAN (reduced by 10% to prevent collision, aligned bottom-center)
-    const barcodeBoxX = 465;
-    const barcodeBoxY = 498;
-    const barcodeBoxW = 293;
+    // Barcode box and FAN
+    const barcodeBoxX = 456;
+    const barcodeBoxY = 496;
+    const barcodeBoxW = 328;
 
-    ctx.fillStyle = textColor;
-    ctx.font = "20px monospace";
+    ctx.fillStyle = "#020617";
+    ctx.font = "bold 22px monospace";
     ctx.textAlign = "center";
-    ctx.fillText(data.fanNumber, barcodeBoxX + barcodeBoxW / 2, barcodeBoxY + 25);
+    ctx.fillText(data.fanNumber, barcodeBoxX + barcodeBoxW / 2, barcodeBoxY + 26);
     ctx.textAlign = "left";
-    drawCode128Barcode(ctx, data.fanNumber, barcodeBoxX + 13, barcodeBoxY + 34, barcodeBoxW - 26, 52);
+    drawCode128Barcode(ctx, data.fanNumber, barcodeBoxX + 10, barcodeBoxY + 34, barcodeBoxW - 20, 52);
   } else if (templateId === "template2") {
     // 1. PERFECT LINE-BY-LINE ALIGNMENT & SPACING (FRONT):
     // Strict vertical grid line matching preprinted labels at x = 398
@@ -518,28 +531,37 @@ export async function renderFrontCardCanvas(
 
   // 4. Ghost photo - clean, sharp transparent portrait proportioned to match Reference 2
   if (photoDrawable) {
-    const isT2 = templateId === "template2";
-    const miniW = isT2 ? 116 : 115;
-    const miniH = isT2 ? 150 : 135;
-    const miniX = isT2 ? 792 : 830;
-    const miniY = isT2 ? 445 : 460;
-    const miniCanvas = createCanvas(miniW, miniH);
-    const mCtx = miniCanvas.getContext("2d");
-    mCtx.imageSmoothingEnabled = true;
+    if (templateId === "template1") {
+      ctx.save();
+      ctx.globalAlpha = 0.75;
+      drawRoundedRect(ctx, 830, 460, 113, 134, 8);
+      ctx.clip();
+      ctx.drawImage(photoDrawable, 830, 460, 113, 134);
+      ctx.restore();
+    } else {
+      const isT2 = templateId === "template2";
+      const miniW = isT2 ? 116 : 115;
+      const miniH = isT2 ? 150 : 135;
+      const miniX = isT2 ? 792 : 830;
+      const miniY = isT2 ? 445 : 460;
+      const miniCanvas = createCanvas(miniW, miniH);
+      const mCtx = miniCanvas.getContext("2d");
+      mCtx.imageSmoothingEnabled = true;
 
-    const aspect = photoDrawable.width / photoDrawable.height;
-    let drawW = miniW;
-    let drawH = miniW / aspect;
-    if (drawH < miniH) {
-      drawH = miniH;
-      drawW = miniH * aspect;
+      const aspect = photoDrawable.width / photoDrawable.height;
+      let drawW = miniW;
+      let drawH = miniW / aspect;
+      if (drawH < miniH) {
+        drawH = miniH;
+        drawW = miniH * aspect;
+      }
+      mCtx.drawImage(photoDrawable, (miniW - drawW) / 2, (miniH - drawH) / 2, drawW, drawH);
+
+      ctx.save();
+      ctx.globalAlpha = isT2 ? 0.88 : 0.82;
+      ctx.drawImage(miniCanvas, miniX, miniY);
+      ctx.restore();
     }
-    mCtx.drawImage(photoDrawable, (miniW - drawW) / 2, (miniH - drawH) / 2, drawW, drawH);
-
-    ctx.save();
-    ctx.globalAlpha = isT2 ? 0.88 : 0.82;
-    ctx.drawImage(miniCanvas, miniX, miniY);
-    ctx.restore();
   }
 
   // 5. Vertical issue date on left margin (excluded for template2 to preserve natural clean gradient edge)
@@ -547,22 +569,22 @@ export async function renderFrontCardCanvas(
     ctx.save();
     ctx.translate(38, 605);
     ctx.rotate(-Math.PI / 2);
-    ctx.font = "14px NotoSansEthiopic, Arial, sans-serif";
+    ctx.font = "bold 14px NotoSansEthiopic, Arial, sans-serif";
     ctx.fillStyle = "#C68932";
     ctx.fillText("የተሰጠበት ቀን: ", 0, 0);
     const w1 = ctx.measureText("የተሰጠበት ቀን: ").width;
 
-    ctx.fillStyle = textColor;
-    ctx.font = "14px Arial, sans-serif";
+    ctx.fillStyle = "#020617";
+    ctx.font = "bold 14px Arial, sans-serif";
     ctx.fillText(data.dateOfIssueEth, w1, 0);
     const w2 = w1 + ctx.measureText(data.dateOfIssueEth).width;
 
     ctx.fillStyle = "#C68932";
-    ctx.font = "14px Arial, sans-serif";
+    ctx.font = "bold 14px Arial, sans-serif";
     ctx.fillText("   Date of Issue: ", w2, 0);
     const w3 = w2 + ctx.measureText("   Date of Issue: ").width;
 
-    ctx.fillStyle = textColor;
+    ctx.fillStyle = "#020617";
     ctx.fillText(formatGregorianDate(data.dateOfIssueGreg), w3, 0);
     ctx.restore();
   }
@@ -600,25 +622,37 @@ export async function renderBackCardCanvas(
   const qrImg = await loadServerImage(qrSource);
 
   if (templateId === "template1") {
+    ctx.fillStyle = "#020617";
     ctx.textAlign = "left";
-    ctx.font = "24px Arial, sans-serif";
-    ctx.fillText(data.phoneNumber, 40, 104);
+    ctx.font = "bold 25px Arial, sans-serif";
+    ctx.fillText(data.phoneNumber, 40, 110);
 
-    ctx.font = "22px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(`${data.nationalityAmharic} | ${data.nationalityEnglish}`, 40, 188);
+    ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(`${data.nationalityAmharic} | ${data.nationalityEnglish}`, 40, 194);
 
-    // Tight single-line spacing under Address
-    ctx.font = "20px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(`${data.regionAmharic} / ${data.regionEnglish}`, 40, 254);
-    ctx.fillText(`${data.subcityAmharic} / ${data.subcityEnglish}`, 40, 282);
-    ctx.fillText(`${data.woredaAmharic} / ${data.woredaEnglish}`, 40, 310);
+    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(data.regionAmharic, 40, 258);
+    ctx.font = "bold 21px Arial, sans-serif";
+    ctx.fillText(data.regionEnglish, 40, 293);
+
+    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(data.subcityAmharic, 40, 330);
+    ctx.font = "bold 21px Arial, sans-serif";
+    ctx.fillText(data.subcityEnglish, 40, 359);
+
+    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
+    ctx.fillText(data.woredaAmharic, 40, 395);
+    ctx.font = "bold 21px Arial, sans-serif";
+    ctx.fillText(data.woredaEnglish, 40, 430);
 
     // FIN Number inside FIN box
-    ctx.font = "22px Arial, monospace";
+    ctx.fillStyle = "#020617";
+    ctx.font = "bold 22px Arial, monospace";
     ctx.fillText(`FIN  ${data.finNumber}`, 104, 546);
 
     // SN Number inside SN badge
-    ctx.font = "19px Arial, monospace";
+    ctx.fillStyle = "#020617";
+    ctx.font = "bold 19px Arial, monospace";
     ctx.fillText(data.serialNumber || "65501482", 835, 597);
 
     // QR Code

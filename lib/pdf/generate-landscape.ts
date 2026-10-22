@@ -274,42 +274,37 @@ export async function renderFrontCardToCanvas(data: EthiopianIdData): Promise<HT
   }
 
   // 3. Extracted demographic text positioned with exact pixel accuracy
-  ctx.fillStyle = "#000000";
-  ctx.textAlign = "left";
-  ctx.font = "24px 'Noto Sans Ethiopic', sans-serif";
+  ctx.fillStyle = "#020617";
+  ctx.font = "bold 26px 'Noto Sans Ethiopic', sans-serif";
   ctx.fillText(data.fullNameAmharic, 418, 207);
 
-  ctx.font = "22px 'Inter', sans-serif";
-  ctx.fillText(data.fullNameEnglish, 418, 245);
+  ctx.font = "bold 24px 'Inter', sans-serif";
+  ctx.fillText(data.fullNameEnglish, 418, 250);
 
   const dobGregFormatted = formatGregorianDate(data.dateOfBirthGreg);
-  ctx.font = "21px 'Inter', sans-serif";
-  ctx.fillText(`${data.dateOfBirthEth} | ${dobGregFormatted}`, 418, 330);
+  ctx.font = "bold 23px 'Inter', sans-serif";
+  ctx.fillText(`${data.dateOfBirthEth} | ${dobGregFormatted}`, 418, 334);
 
-  ctx.font = "21px 'Noto Sans Ethiopic', 'Inter', sans-serif";
-  ctx.fillText(`${data.sexAmharic} | ${data.sexEnglish}`, 418, 394);
+  ctx.font = "bold 23px 'Noto Sans Ethiopic', 'Inter', sans-serif";
+  ctx.fillText(`${data.sexAmharic} | ${data.sexEnglish}`, 418, 405);
 
   const expiryGregFormatted = formatGregorianDate(data.dateOfExpiryGreg);
-  ctx.font = "21px 'Inter', sans-serif";
-  ctx.fillText(`${data.dateOfExpiryEth} | ${expiryGregFormatted}`, 418, 460);
+  ctx.font = "bold 23px 'Inter', sans-serif";
+  ctx.fillText(`${data.dateOfExpiryEth} | ${expiryGregFormatted}`, 418, 468);
 
-  // 4. White Barcode Container reduced horizontally by 10% (328 -> 295px)
-  const barcodeBoxX = 472;
+  // 4. White Barcode Container with extracted FAN and Code128 bars
+  const barcodeBoxX = 456;
   const barcodeBoxY = 496;
-  const barcodeBoxW = 295;
+  const barcodeBoxW = 328;
   const barcodeBoxH = 96;
 
-  ctx.fillStyle = "#FFFFFF";
-  drawRoundedRect(ctx, barcodeBoxX, barcodeBoxY, barcodeBoxW, barcodeBoxH, 10);
-  ctx.fill();
-
-  ctx.fillStyle = "#000000";
-  ctx.font = "20px monospace";
+  ctx.fillStyle = "#020617";
+  ctx.font = "900 22px monospace";
   ctx.textAlign = "center";
   ctx.fillText(data.fanNumber, barcodeBoxX + barcodeBoxW / 2, barcodeBoxY + 26);
   ctx.textAlign = "left";
 
-  drawCode128Barcode(ctx, data.fanNumber, barcodeBoxX + 12, barcodeBoxY + 32, barcodeBoxW - 24, 54);
+  drawCode128Barcode(ctx, data.fanNumber, barcodeBoxX + 10, barcodeBoxY + 34, barcodeBoxW - 20, 52);
 
   // 5. Ghost Photo on bottom right (fits ghost slot below Fayda watermark: x: 830, y: 460, w: 113, h: 134)
   if (data.photoUrl) {
@@ -317,7 +312,7 @@ export async function renderFrontCardToCanvas(data: EthiopianIdData): Promise<HT
       const cleanPhotoUrl = await removePhotoBackground(data.photoUrl);
       const ghostImg = await loadImage(cleanPhotoUrl);
       ctx.save();
-      ctx.globalAlpha = 0.82;
+      ctx.globalAlpha = 0.75;
       drawRoundedRect(ctx, 830, 460, 113, 134, 8);
       ctx.clip();
       ctx.drawImage(ghostImg, 830, 460, 113, 134);
@@ -331,22 +326,22 @@ export async function renderFrontCardToCanvas(data: EthiopianIdData): Promise<HT
   ctx.save();
   ctx.translate(38, 605);
   ctx.rotate(-Math.PI / 2);
-  ctx.font = "14px 'Noto Sans Ethiopic', sans-serif";
+  ctx.font = "bold 14px 'Noto Sans Ethiopic', sans-serif";
   ctx.fillStyle = "#C68932";
   ctx.fillText("የተሰጠበት ቀን: ", 0, 0);
   const w1 = ctx.measureText("የተሰጠበት ቀን: ").width;
 
-  ctx.fillStyle = "#000000";
-  ctx.font = "14px 'Inter', sans-serif";
+  ctx.fillStyle = "#020617";
+  ctx.font = "bold 14px 'Inter', sans-serif";
   ctx.fillText(data.dateOfIssueEth, w1, 0);
   const w2 = w1 + ctx.measureText(data.dateOfIssueEth).width;
 
   ctx.fillStyle = "#C68932";
-  ctx.font = "14px 'Inter', sans-serif";
+  ctx.font = "bold 14px 'Inter', sans-serif";
   ctx.fillText("   Date of Issue: ", w2, 0);
   const w3 = w2 + ctx.measureText("   Date of Issue: ").width;
 
-  ctx.fillStyle = "#000000";
+  ctx.fillStyle = "#020617";
   ctx.fillText(formatGregorianDate(data.dateOfIssueGreg), w3, 0);
   ctx.restore();
 
@@ -370,76 +365,38 @@ export async function renderBackCardToCanvas(data: EthiopianIdData): Promise<HTM
     console.warn("Could not load back template:", err);
   }
 
-  // 2. Draw extracted text on Left - strict vertical grid line at x = 40
-  const backTextX = 40;
-  ctx.fillStyle = "#000000";
-  ctx.textAlign = "left";
-  ctx.font = "24px 'Inter', sans-serif";
-  ctx.fillText(data.phoneNumber, backTextX, 104);
+  // 2. Draw extracted text on Left
+  ctx.fillStyle = "#020617";
+  ctx.font = "bold 25px 'Inter', sans-serif";
+  ctx.fillText(data.phoneNumber, 40, 110);
 
-  ctx.font = "22px 'Noto Sans Ethiopic', 'Inter', sans-serif";
-  ctx.fillText(`${data.nationalityAmharic} | ${data.nationalityEnglish}`, backTextX, 188);
+  ctx.font = "bold 23px 'Noto Sans Ethiopic', 'Inter', sans-serif";
+  ctx.fillText(`${data.nationalityAmharic} | ${data.nationalityEnglish}`, 40, 194);
 
-  // Equal vertical spacing (28px step) for stacked address lines, leaving >120px padding above footer
-  ctx.font = "19px 'Noto Sans Ethiopic', sans-serif";
-  ctx.fillText(data.regionAmharic, backTextX, 248);
-  ctx.font = "19px 'Inter', sans-serif";
-  ctx.fillText(data.regionEnglish, backTextX, 276);
+  ctx.font = "bold 21px 'Noto Sans Ethiopic', sans-serif";
+  ctx.fillText(data.regionAmharic, 40, 258);
+  ctx.font = "bold 21px 'Inter', sans-serif";
+  ctx.fillText(data.regionEnglish, 40, 293);
 
-  ctx.font = "19px 'Noto Sans Ethiopic', sans-serif";
-  ctx.fillText(data.subcityAmharic, backTextX, 304);
-  ctx.font = "19px 'Inter', sans-serif";
-  ctx.fillText(data.subcityEnglish, backTextX, 332);
+  ctx.font = "bold 21px 'Noto Sans Ethiopic', sans-serif";
+  ctx.fillText(data.subcityAmharic, 40, 330);
+  ctx.font = "bold 21px 'Inter', sans-serif";
+  ctx.fillText(data.subcityEnglish, 40, 359);
 
-  ctx.font = "19px 'Noto Sans Ethiopic', sans-serif";
-  ctx.fillText(data.woredaAmharic, backTextX, 360);
-  ctx.font = "19px 'Inter', sans-serif";
-  ctx.fillText(data.woredaEnglish, backTextX, 388);
+  ctx.font = "bold 21px 'Noto Sans Ethiopic', sans-serif";
+  ctx.fillText(data.woredaAmharic, 40, 395);
+  ctx.font = "bold 21px 'Inter', sans-serif";
+  ctx.fillText(data.woredaEnglish, 40, 430);
 
-  // 3. CENTER FIN: Vertically and horizontally centered numeric string inside white box
-  const finBoxX = 104;
-  const finBoxY = 520;
-  const finBoxW = 230;
-  const finBoxH = 50;
+  // 3. Draw FIN digits inside the bottom-left white FIN box
+  ctx.fillStyle = "#020617";
+  ctx.font = "900 22px 'Inter', monospace";
+  ctx.fillText(`FIN  ${data.finNumber}`, 104, 546);
 
-  ctx.save();
-  ctx.fillStyle = "#000000";
-  ctx.font = "22px 'Inter', monospace";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(`FIN  ${data.finNumber}`, finBoxX + finBoxW / 2, finBoxY + finBoxH / 2);
-  ctx.restore();
-
-  // 4. CENTER SN: Positioned at bottom right in footer row
-  const snBoxX = 802;
-  const snBoxY = 576;
-  const snBoxW = 186;
-  const snBoxH = 34;
-
-  ctx.fillStyle = "#FFFFFF";
-  drawRoundedRect(ctx, snBoxX, snBoxY, snBoxW, snBoxH, 6);
-  ctx.fill();
-
-  const snLabel = "SN : ";
-  const snVal = data.serialNumber || "65501482";
-  ctx.font = "bold 18px 'Inter', sans-serif";
-  const labelW = ctx.measureText(snLabel).width;
-  ctx.font = "bold 18px 'Inter', monospace";
-  const valW = ctx.measureText(snVal).width;
-  const totalSnW = labelW + valW;
-  const snStartX = snBoxX + (snBoxW - totalSnW) / 2;
-  const snCenterY = snBoxY + snBoxH / 2;
-
-  ctx.save();
-  ctx.textBaseline = "middle";
-  ctx.textAlign = "left";
-  ctx.fillStyle = "#8c7b3e";
-  ctx.font = "bold 18px 'Inter', sans-serif";
-  ctx.fillText(snLabel, snStartX, snCenterY);
-  ctx.fillStyle = "#000000";
-  ctx.font = "bold 18px 'Inter', monospace";
-  ctx.fillText(snVal, snStartX + labelW, snCenterY);
-  ctx.restore();
+  // 4. Draw SN inside the bottom-right white SN badge
+  ctx.fillStyle = "#020617";
+  ctx.font = "900 19px 'Inter', monospace";
+  ctx.fillText(data.serialNumber || "65501482", 835, 597);
 
   // 5. Draw QR code cleanly inside the white QR container (square 490x490)
   const qrSource = data.qrCodeUrl || "/assets/target-qr.png";

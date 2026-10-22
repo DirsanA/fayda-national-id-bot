@@ -25,27 +25,24 @@ export function LandscapeCardBack({ data, className = "" }: LandscapeCardBackPro
         draggable={false}
       />
 
-      {/* 2. Dynamic Text Overlays on Left strictly aligned to vertical grid line */}
-      <div className="absolute left-[5.9%] top-[12.8%] w-[38%] flex flex-col pointer-events-none text-black">
+      {/* 2. Dynamic Text Overlays on Left directly over pristine background */}
+      <div className="absolute left-[4.0%] top-[14.2%] w-[38%] flex flex-col pointer-events-none">
         {/* Phone */}
         <div>
-          <p className="text-[12px] sm:text-[13.5px] font-normal text-black leading-tight">
+          <p className="text-[12px] sm:text-[13.5px] font-bold text-slate-950 leading-tight">
             {data.phoneNumber}
           </p>
         </div>
 
-        {/* Nationality & Self Declared with correct Ge'ez 'ጠ' character */}
-        <div className="pt-[4.5%]">
-          <p className="text-[9.5px] sm:text-[10.5px] font-normal text-black leading-tight">
-            (በተገለጠው መሰረት / Self Declared)
-          </p>
-          <p className="text-[11px] sm:text-[12px] font-normal text-black leading-tight pt-[2%]">
+        {/* Nationality */}
+        <div className="pt-[7.5%]">
+          <p className="text-[11px] sm:text-[12.5px] font-bold text-slate-950 leading-tight">
             {data.nationalityAmharic} &nbsp;|&nbsp; {data.nationalityEnglish}
           </p>
         </div>
 
-        {/* Address stacked with equal vertical spacing, ample padding above footer */}
-        <div className="pt-[5.5%] space-y-[2px] text-[10px] sm:text-[11px] font-normal text-black leading-[1.3]">
+        {/* Address */}
+        <div className="pt-[6.5%] space-y-[1px] text-[10px] sm:text-[11.5px] font-bold text-slate-950 leading-[1.25]">
           <p>{data.regionAmharic}</p>
           <p>{data.regionEnglish}</p>
           <p>{data.subcityAmharic}</p>
@@ -55,10 +52,10 @@ export function LandscapeCardBack({ data, className = "" }: LandscapeCardBackPro
         </div>
       </div>
 
-      {/* 3. CENTER FIN: Vertically and horizontally center numeric string inside white box */}
-      <div className="absolute left-[16.7%] bottom-[12.2%] w-[25.0%] h-[8.0%] flex items-center justify-center pointer-events-none">
-        <span className="text-[11px] sm:text-[12.5px] font-mono font-normal tracking-wider text-black">
-          {data.finNumber}
+      {/* 3. FIN Number inside bottom-left FIN Box */}
+      <div className="absolute left-[10.3%] bottom-[12.2%] w-[24%] flex items-center pointer-events-none">
+        <span className="text-[10.5px] sm:text-[12px] font-black tracking-wider text-slate-950">
+          FIN &nbsp;{data.finNumber}
         </span>
       </div>
 
@@ -71,10 +68,9 @@ export function LandscapeCardBack({ data, className = "" }: LandscapeCardBackPro
         />
       </div>
 
-      {/* 5. CENTER SN: Symmetrically centered inside bottom-right white pill box */}
-      <div className="absolute right-[2.5%] bottom-[4.4%] w-[18.4%] h-[5.4%] bg-white rounded-[4px] border border-slate-200 flex items-center justify-center pointer-events-none text-[8.5px] sm:text-[9.5px]">
-        <span className="text-[#8c7b3e] font-bold mr-1">SN : </span>
-        <span className="text-black font-mono font-bold">{data.serialNumber || "65501482"}</span>
+      {/* 5. SN Number inside SN Badge */}
+      <div className="absolute right-[4.2%] bottom-[4.2%] w-[19%] flex items-center justify-end px-1 pointer-events-none text-[8.5px] sm:text-[9.5px] font-black">
+        <span className="text-slate-900 font-extrabold">{data.serialNumber || "65501482"}</span>
       </div>
     </div>
   );
