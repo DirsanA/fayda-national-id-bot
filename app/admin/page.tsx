@@ -649,7 +649,7 @@ export default function AdminPage() {
                 >
                   <option value="template1">Template 1 (Classic Standard)</option>
                   <option value="template2">Template 2 (Modern Blue)</option>
-                  <option value="template3">Template 3 (Compact Layout)</option>
+                  <option value="template3">Template 3 (Minimal)</option>
                 </select>
                 <p className="mt-1 text-[11px] text-slate-500">
                   Assigned ID card layout.

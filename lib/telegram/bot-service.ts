@@ -603,7 +603,7 @@ export async function handleTelegramUpdate(update: any) {
         const templateNames: Record<string, string> = {
           template1: "Template 1 (Classic Standard)",
           template2: "Template 2 (Modern Blue Header)",
-          template3: "Template 3 (Compact Layout)",
+          template3: "Template 3 (Minimal)",
         };
 
         if (cbChatId) {
@@ -711,7 +711,7 @@ export async function handleTelegramUpdate(update: any) {
     const templateNames: Record<string, string> = {
       template1: "Template 1 (Classic Standard)",
       template2: "Template 2 (Modern Blue Header)",
-      template3: "Template 3 (Compact Layout)",
+      template3: "Template 3 (Minimal)",
     };
 
     const templateMarkup = {
@@ -730,7 +730,7 @@ export async function handleTelegramUpdate(update: any) {
         ],
         [
           {
-            text: `${currentTemplate === "template3" ? "✅ " : ""}3. Compact Minimal`,
+            text: `${currentTemplate === "template3" ? "✅ " : ""}3. Minimal`,
             callback_data: "set_template:template3",
           },
         ],

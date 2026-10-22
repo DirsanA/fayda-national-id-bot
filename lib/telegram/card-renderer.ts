@@ -241,8 +241,8 @@ const TEMPLATE_CONFIG: Record<CardTemplateId, { front: string; back: string }> =
     back: "back2.png",
   },
   template3: {
-    front: "front3.png",
-    back: "back3.png",
+    front: "card-front-template.png",
+    back: "card-back-template.png",
   },
 };
 
@@ -362,15 +362,20 @@ export async function renderFrontCardCanvas(
   if (data.photoUrl) {
     const rawPhotoImg = await loadServerImage(data.photoUrl);
     if (rawPhotoImg) {
-      // 1. Perform background removal on the full-resolution source image
-      const cleanPhotoCanvas = createCanvas(rawPhotoImg.width, rawPhotoImg.height);
-      const cleanCtx = cleanPhotoCanvas.getContext("2d");
-      cleanCtx.imageSmoothingEnabled = true;
-      cleanCtx.drawImage(rawPhotoImg, 0, 0);
-      isolateSubjectClean(cleanPhotoCanvas);
+      // 1. Perform background removal for template2 (Modern Blue) and template3 (Minimal).
+      // Classic Standard (template1) keeps the original portrait photo as completed.
+      let photoSource = rawPhotoImg;
+      if (templateId === "template2" || templateId === "template3") {
+        const cleanPhotoCanvas = createCanvas(rawPhotoImg.width, rawPhotoImg.height);
+        const cleanCtx = cleanPhotoCanvas.getContext("2d");
+        cleanCtx.imageSmoothingEnabled = true;
+        cleanCtx.drawImage(rawPhotoImg, 0, 0);
+        isolateSubjectClean(cleanPhotoCanvas);
+        photoSource = cleanPhotoCanvas;
+      }
 
       photoDrawable =
-        photoStyle === "bw" ? convertServerImageToGrayscale(cleanPhotoCanvas) : cleanPhotoCanvas;
+        photoStyle === "bw" ? convertServerImageToGrayscale(photoSource) : photoSource;
       
       if (templateId === "template1") {
         const photoW = 281;
@@ -383,12 +388,11 @@ export async function renderFrontCardCanvas(
         ctx.clip();
         ctx.drawImage(photoDrawable, photoX, photoY, photoW, photoH);
         ctx.restore();
-      } else {
-        const isT2 = templateId === "template2";
-        const targetW = isT2 ? 282 : 320;
-        const targetH = isT2 ? 354 : 430;
-        const photoX = isT2 ? 72 : 55;
-        const photoY = isT2 ? 198 : 125;
+      } else if (templateId === "template2") {
+        const targetW = 282;
+        const targetH = 354;
+        const photoX = 72;
+        const photoY = 198;
 
         const pCanvas = createCanvas(targetW, targetH);
         const pCtx = pCanvas.getContext("2d");
@@ -407,6 +411,34 @@ export async function renderFrontCardCanvas(
         pCtx.drawImage(photoDrawable, offX, offY, drawW, drawH);
 
         ctx.drawImage(pCanvas, photoX, photoY);
+      } else if (templateId === "template3") {
+        // Minimal: exact same card design, layout, and dimensions as Classic Standard,
+        // with portrait photo background cleanly removed.
+        const targetW = 302;
+        const targetH = 430;
+        const photoX = 73;
+        const photoY = 138;
+
+        const pCanvas = createCanvas(targetW, targetH);
+        const pCtx = pCanvas.getContext("2d");
+        pCtx.imageSmoothingEnabled = true;
+
+        const aspect = photoDrawable.width / photoDrawable.height;
+        let drawW = targetW;
+        let drawH = targetW / aspect;
+        if (drawH < targetH) {
+          drawH = targetH;
+          drawW = targetH * aspect;
+        }
+        const offX = (targetW - drawW) / 2;
+        const offY = (targetH - drawH) / 2;
+        pCtx.drawImage(photoDrawable, offX, offY, drawW, drawH);
+
+        ctx.save();
+        drawRoundedRect(ctx, photoX, photoY, targetW, targetH, 16);
+        ctx.clip();
+        ctx.drawImage(pCanvas, photoX, photoY);
+        ctx.restore();
       }
     }
   }
@@ -416,7 +448,7 @@ export async function renderFrontCardCanvas(
   const expiryGregFormatted = formatGregorianDate(data.dateOfExpiryGreg);
   const textColor = "#000000";
 
-  if (templateId === "template1") {
+  if (templateId === "template1" || templateId === "template3") {
     ctx.fillStyle = "#020617";
     ctx.textAlign = "left";
     ctx.font = "bold 26px NotoSansEthiopic, Arial, sans-serif";
@@ -498,40 +530,11 @@ export async function renderFrontCardCanvas(
     ctx.fillText(data.fanNumber, fanBoxX + fanBoxW / 2, fanBoxY + 26);
     ctx.textAlign = "left";
     drawCode128Barcode(ctx, data.fanNumber, fanBoxX + 12, fanBoxY + 32, fanBoxW - 24, 54);
-  } else if (templateId === "template3") {
-    ctx.fillStyle = textColor;
-    ctx.textAlign = "left";
-    ctx.font = "24px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(data.fullNameAmharic, 418, 190);
-
-    ctx.font = "22px Arial, sans-serif";
-    ctx.fillText(data.fullNameEnglish, 418, 228);
-
-    ctx.font = "21px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(`${data.dateOfBirthEth} | ${dobGregFormatted}`, 418, 300);
-
-    ctx.font = "21px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(`${data.sexAmharic} | ${data.sexEnglish}`, 418, 380);
-
-    ctx.font = "21px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(`${data.dateOfExpiryEth} | ${expiryGregFormatted}`, 418, 468);
-
-    // Barcode box and FAN (reduced by 10% to prevent collision, aligned bottom-center)
-    const barcodeBoxX = 455;
-    const barcodeBoxY = 490;
-    const barcodeBoxW = 248;
-
-    ctx.fillStyle = textColor;
-    ctx.font = "20px monospace";
-    ctx.textAlign = "center";
-    ctx.fillText(data.fanNumber, barcodeBoxX + barcodeBoxW / 2, barcodeBoxY + 24);
-    ctx.textAlign = "left";
-    drawCode128Barcode(ctx, data.fanNumber, barcodeBoxX + 10, barcodeBoxY + 30, barcodeBoxW - 20, 52);
   }
 
   // 4. Ghost photo - clean, sharp transparent portrait proportioned to match Reference 2
   if (photoDrawable) {
-    if (templateId === "template1") {
+    if (templateId === "template1" || templateId === "template3") {
       ctx.save();
       ctx.globalAlpha = 0.75;
       drawRoundedRect(ctx, 830, 460, 113, 134, 8);
@@ -621,7 +624,7 @@ export async function renderBackCardCanvas(
   const qrSource = data.qrCodeUrl || "/assets/target-qr.png";
   const qrImg = await loadServerImage(qrSource);
 
-  if (templateId === "template1") {
+  if (templateId === "template1" || templateId === "template3") {
     ctx.fillStyle = "#020617";
     ctx.textAlign = "left";
     ctx.font = "bold 25px Arial, sans-serif";
@@ -744,41 +747,6 @@ export async function renderBackCardCanvas(
       drawRoundedRect(ctx, 462, 46, 485, 485, 16);
       ctx.fill();
       ctx.drawImage(qrImg, 472, 56, 465, 465);
-    }
-  } else if (templateId === "template3") {
-    ctx.textAlign = "left";
-    ctx.font = "25px Arial, sans-serif";
-    ctx.fillText(data.phoneNumber, 35, 140);
-
-    ctx.font = "23px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(`${data.nationalityAmharic} | ${data.nationalityEnglish}`, 35, 245);
-
-    ctx.font = "21px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(data.regionAmharic, 35, 330);
-    ctx.font = "21px Arial, sans-serif";
-    ctx.fillText(data.regionEnglish, 35, 360);
-
-    ctx.font = "21px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(data.subcityAmharic, 35, 390);
-    ctx.font = "21px Arial, sans-serif";
-    ctx.fillText(data.subcityEnglish, 35, 418);
-
-    ctx.font = "21px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText(data.woredaAmharic, 35, 448);
-    ctx.font = "21px Arial, sans-serif";
-    ctx.fillText(data.woredaEnglish, 35, 478);
-
-    // FIN Number inside FIN box
-    ctx.font = "22px Arial, monospace";
-    ctx.fillText(`FIN  ${data.finNumber}`, 104, 562);
-
-    // SN Number inside SN badge
-    ctx.font = "19px Arial, monospace";
-    ctx.fillText(data.serialNumber || "65501482", 825, 620);
-
-    // QR Code
-    if (qrImg) {
-      ctx.drawImage(qrImg, 455, 45, 490, 490);
     }
   }
 

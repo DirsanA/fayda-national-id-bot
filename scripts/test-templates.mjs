@@ -76,7 +76,7 @@ async function renderCard(templateId, frontFile, backFile) {
 
   // Front Coordinates per template
   ctx.fillStyle = "#020617";
-  if (templateId === "template1") {
+  if (templateId === "template1" || templateId === "template3") {
     ctx.font = "bold 26px NotoSansEthiopic, Arial, sans-serif";
     ctx.fillText("አበበ በቀለ ደስታ", 418, 207);
     ctx.font = "bold 24px Arial, sans-serif";
@@ -132,24 +132,6 @@ async function renderCard(templateId, frontFile, backFile) {
     ctx.fillText("4952 8025 7094 3927", barcodeBoxX + barcodeBoxW / 2, barcodeBoxY + 26);
     ctx.textAlign = "left";
     drawCode128Barcode(ctx, "4952802570943927", barcodeBoxX + 12, barcodeBoxY + 32, barcodeBoxW - 24, 54);
-  } else if (templateId === "template3") {
-    ctx.font = "bold 26px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText("አበበ በቀለ ደስታ", 418, 190);
-    ctx.font = "bold 24px Arial, sans-serif";
-    ctx.fillText("Abebe Bekele Desta", 418, 228);
-    ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText("12/04/1988 | 20/12/1995", 418, 300);
-    ctx.fillText("ወንድ | Male", 418, 380);
-    ctx.fillText("12/04/2000 | 20/12/2007", 418, 468);
-
-    const barcodeBoxX = 445;
-    const barcodeBoxY = 490;
-    const barcodeBoxW = 275;
-    ctx.font = "bold 20px monospace";
-    ctx.textAlign = "center";
-    ctx.fillText("4952 8025 7094 3927", barcodeBoxX + barcodeBoxW / 2, barcodeBoxY + 24);
-    ctx.textAlign = "left";
-    drawCode128Barcode(ctx, "4952802570943927", barcodeBoxX + 10, barcodeBoxY + 30, barcodeBoxW - 20, 52);
   }
 
   // Vertical Issue date
@@ -170,7 +152,7 @@ async function renderCard(templateId, frontFile, backFile) {
   ctx.drawImage(bImg, backX, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
   ctx.fillStyle = "#020617";
-  if (templateId === "template1") {
+  if (templateId === "template1" || templateId === "template3") {
     ctx.font = "bold 25px Arial, sans-serif";
     ctx.fillText("+251911223344", backX + 40, 110);
     ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
@@ -273,34 +255,6 @@ async function renderCard(templateId, frontFile, backFile) {
     drawRoundedRect(ctx, backX + 462, 46, 485, 485, 16);
     ctx.fill();
     ctx.drawImage(qrImg, backX + 472, 56, 465, 465);
-  } else if (templateId === "template3") {
-    ctx.font = "bold 25px Arial, sans-serif";
-    ctx.fillText("+251911223344", backX + 35, 140);
-    ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText("ኢትዮጵያዊ | Ethiopian", backX + 35, 245);
-    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText("አዲስ አበባ", backX + 35, 330);
-    ctx.font = "bold 21px Arial, sans-serif";
-    ctx.fillText("Addis Ababa", backX + 35, 360);
-    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText("ቦሌ", backX + 35, 390);
-    ctx.font = "bold 21px Arial, sans-serif";
-    ctx.fillText("Bole", backX + 35, 418);
-    ctx.font = "bold 21px NotoSansEthiopic, Arial, sans-serif";
-    ctx.fillText("ወረዳ 03", backX + 35, 448);
-    ctx.font = "bold 21px Arial, sans-serif";
-    ctx.fillText("Woreda 03", backX + 35, 478);
-
-    // FIN Box
-    ctx.font = "bold 22px Arial, monospace";
-    ctx.fillText("FIN  9876 5432 1098", backX + 104, 562);
-
-    // SN Box
-    ctx.font = "bold 19px Arial, monospace";
-    ctx.fillText("65501482", backX + 825, 620);
-
-    // QR
-    ctx.drawImage(qrImg, backX + 455, 45, 490, 490);
   }
 
   const outBuf = combinedCanvas.toBuffer("image/png");
@@ -311,6 +265,6 @@ async function renderCard(templateId, frontFile, backFile) {
 async function main() {
   await renderCard("template1", "card-front-template.png", "card-back-template.png");
   await renderCard("template2", "front2.png", "back2.png");
-  await renderCard("template3", "front3.png", "back3.png");
+  await renderCard("template3", "card-front-template.png", "card-back-template.png");
 }
 main().catch(console.error);
