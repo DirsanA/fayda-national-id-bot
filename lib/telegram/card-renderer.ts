@@ -377,7 +377,7 @@ export async function renderFrontCardCanvas(
       photoDrawable =
         photoStyle === "bw" ? convertServerImageToGrayscale(photoSource) : photoSource;
       
-      if (templateId === "template1") {
+      if (templateId === "template1" || templateId === "template3") {
         const photoW = 281;
         const photoH = 400;
         const photoX = 73 + Math.round((302 - photoW) / 2);
@@ -411,34 +411,6 @@ export async function renderFrontCardCanvas(
         pCtx.drawImage(photoDrawable, offX, offY, drawW, drawH);
 
         ctx.drawImage(pCanvas, photoX, photoY);
-      } else if (templateId === "template3") {
-        // Minimal: exact same card design, layout, and dimensions as Classic Standard,
-        // with portrait photo background cleanly removed.
-        const targetW = 302;
-        const targetH = 430;
-        const photoX = 73;
-        const photoY = 138;
-
-        const pCanvas = createCanvas(targetW, targetH);
-        const pCtx = pCanvas.getContext("2d");
-        pCtx.imageSmoothingEnabled = true;
-
-        const aspect = photoDrawable.width / photoDrawable.height;
-        let drawW = targetW;
-        let drawH = targetW / aspect;
-        if (drawH < targetH) {
-          drawH = targetH;
-          drawW = targetH * aspect;
-        }
-        const offX = (targetW - drawW) / 2;
-        const offY = (targetH - drawH) / 2;
-        pCtx.drawImage(photoDrawable, offX, offY, drawW, drawH);
-
-        ctx.save();
-        drawRoundedRect(ctx, photoX, photoY, targetW, targetH, 16);
-        ctx.clip();
-        ctx.drawImage(pCanvas, photoX, photoY);
-        ctx.restore();
       }
     }
   }
