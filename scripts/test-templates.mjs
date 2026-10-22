@@ -265,6 +265,6 @@ async function renderCard(templateId, frontFile, backFile) {
 async function main() {
   await renderCard("template1", "card-front-template.png", "card-back-template.png");
   await renderCard("template2", "front2.png", "back2.png");
-  await renderCard("template3", "front3.png", "card-back-template.png");
+  await renderCard("template3", "card-front-template.png", "card-back-template.png");
 }
 main().catch(console.error);

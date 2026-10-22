@@ -143,58 +143,43 @@ function isolateSubjectClean(srcCanvas: any) {
     }
   }
   const stdDev = Math.sqrt(sumSq / bgCount);
-  const baseDistThresh = Math.max(30, Math.min(65, stdDev * 3.0 + 22));
-  const solidThresh = baseDistThresh * 0.72;
+  const distThresh = Math.max(26, Math.min(54, stdDev * 2.8 + 18));
+  const solidThresh = distThresh * 0.72;
 
   const colorDist = (r: number, g: number, b: number) => Math.hypot(r - bgR, g - bgG, b - bgB);
 
   const isHumanForeground = (r: number, g: number, b: number) => {
-    // Dark hair / dark features
-    if (r < 75 && g < 75 && b < 75) return true;
-    // Warm skin tone
-    if (r > b + 24 && r > 80 && g > 55) return true;
-    // Saturated clothing
-    if (g > r + 20 && g > b + 10) return true;
-    if (b > r + 20 && b > g + 10) return true;
-    return false;
-  };
-
-  const isWallPixel = (r: number, g: number, b: number) => {
-    if (isHumanForeground(r, g, b)) return false;
-    if (colorDist(r, g, b) < baseDistThresh) return true;
-    const minVal = Math.min(r, g, b);
-    const maxVal = Math.max(r, g, b);
-    if (minVal > 85 && (maxVal - minVal) < 40 && colorDist(r, g, b) < baseDistThresh * 1.8) {
-      return true;
-    }
+    if (r < 75 && g < 75 && b < 75) return true; // Dark hair
+    if (r > b + 28 && r > 85 && g > 60) return true; // Skin
     return false;
   };
 
   const visited = new Uint8Array(w * h);
   const queue = new Int32Array(w * h);
   let qHead = 0, qTail = 0;
+  const maxDepthY = Math.floor(h * 0.80);
 
   // Seed top edge
   for (let x = 0; x < w; x++) {
     const idx = (0 * w + x) * 4;
     const r = data[idx], g = data[idx + 1], b = data[idx + 2];
-    if (isWallPixel(r, g, b)) {
+    if (!isHumanForeground(r, g, b) && colorDist(r, g, b) < distThresh) {
       visited[x] = 1;
       queue[qTail++] = x;
     }
   }
 
-  // Seed entire left and right edges so background beside shoulders is reached
-  for (let y = 1; y < h; y++) {
+  // Seed upper sides
+  for (let y = 1; y < maxDepthY; y++) {
     const pL = y * w + 0;
     const idxL = pL * 4;
-    if (!visited[pL] && isWallPixel(data[idxL], data[idxL + 1], data[idxL + 2])) {
+    if (!visited[pL] && !isHumanForeground(data[idxL], data[idxL + 1], data[idxL + 2]) && colorDist(data[idxL], data[idxL + 1], data[idxL + 2]) < distThresh) {
       visited[pL] = 1;
       queue[qTail++] = pL;
     }
     const pR = y * w + (w - 1);
     const idxR = pR * 4;
-    if (!visited[pR] && isWallPixel(data[idxR], data[idxR + 1], data[idxR + 2])) {
+    if (!visited[pR] && !isHumanForeground(data[idxR], data[idxR + 1], data[idxR + 2]) && colorDist(data[idxR], data[idxR + 1], data[idxR + 2]) < distThresh) {
       visited[pR] = 1;
       queue[qTail++] = pR;
     }
@@ -205,18 +190,20 @@ function isolateSubjectClean(srcCanvas: any) {
     const px = p % w;
     const py = Math.floor(p / w);
 
+    if (py >= maxDepthY) continue;
+
     const neighbors = [
       px > 0 ? p - 1 : -1,
       px < w - 1 ? p + 1 : -1,
       py > 0 ? p - w : -1,
-      py < h - 1 ? p + w : -1
+      py < maxDepthY ? p + w : -1
     ];
 
     for (const np of neighbors) {
       if (np >= 0 && !visited[np]) {
         const nIdx = np * 4;
         const nr = data[nIdx], ng = data[nIdx + 1], nb = data[nIdx + 2];
-        if (isWallPixel(nr, ng, nb)) {
+        if (!isHumanForeground(nr, ng, nb) && colorDist(nr, ng, nb) < distThresh) {
           visited[np] = 1;
           queue[qTail++] = np;
         }
@@ -232,7 +219,7 @@ function isolateSubjectClean(srcCanvas: any) {
       if (d <= solidThresh) {
         data[idx + 3] = 0; // True transparent
       } else {
-        const factor = (d - solidThresh) / (baseDistThresh * 1.5 - solidThresh);
+        const factor = (d - solidThresh) / (distThresh - solidThresh);
         data[idx + 3] = Math.round(Math.max(0, Math.min(255, factor * 255)));
       }
     }
@@ -254,7 +241,7 @@ const TEMPLATE_CONFIG: Record<CardTemplateId, { front: string; back: string }> =
     back: "back2.png",
   },
   template3: {
-    front: "front3.png",
+    front: "card-front-template.png",
     back: "card-back-template.png",
   },
 };
@@ -390,7 +377,7 @@ export async function renderFrontCardCanvas(
       photoDrawable =
         photoStyle === "bw" ? convertServerImageToGrayscale(photoSource) : photoSource;
       
-      if (templateId === "template1") {
+      if (templateId === "template1" || templateId === "template3") {
         const photoW = 281;
         const photoH = 400;
         const photoX = 73 + Math.round((302 - photoW) / 2);
@@ -406,30 +393,6 @@ export async function renderFrontCardCanvas(
         const targetH = 354;
         const photoX = 72;
         const photoY = 198;
-
-        const pCanvas = createCanvas(targetW, targetH);
-        const pCtx = pCanvas.getContext("2d");
-        pCtx.imageSmoothingEnabled = true;
-
-        // Preserve natural aspect ratio without distortion
-        const aspect = photoDrawable.width / photoDrawable.height;
-        let drawW = targetW;
-        let drawH = targetW / aspect;
-        if (drawH < targetH) {
-          drawH = targetH;
-          drawW = targetH * aspect;
-        }
-        const offX = (targetW - drawW) / 2;
-        const offY = (targetH - drawH) / 2;
-        pCtx.drawImage(photoDrawable, offX, offY, drawW, drawH);
-
-        ctx.drawImage(pCanvas, photoX, photoY);
-      } else if (templateId === "template3") {
-        // Minimal: exact Classic Standard card layout with Modern Blue transparent subject rendering
-        const targetW = 302;
-        const targetH = 430;
-        const photoX = 73;
-        const photoY = 138;
 
         const pCanvas = createCanvas(targetW, targetH);
         const pCtx = pCanvas.getContext("2d");
