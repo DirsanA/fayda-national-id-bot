@@ -7,7 +7,7 @@ export interface CustomerDocument {
   faydaApiKey?: string;
   balance: number; // Admin-managed verification quota
   usedCount?: number; // Total verifications consumed
-  cardTemplate?: "template1" | "template2" | "template3";
+  cardTemplate?: "template1" | "template2" | "template3" | "template4";
   createdAt: Date;
   updatedAt: Date;
 }
@@ -118,7 +118,7 @@ export async function createCustomer(
     telegramUsername?: string;
     balance: number;
     faydaApiKey?: string;
-    cardTemplate?: "template1" | "template2" | "template3";
+    cardTemplate?: "template1" | "template2" | "template3" | "template4";
   }
 ): Promise<CustomerDocument> {
   const col = await getCustomersCollection();
@@ -144,7 +144,7 @@ export async function updateCustomer(
     telegramUsername?: string;
     balance?: number;
     faydaApiKey?: string;
-    cardTemplate?: "template1" | "template2" | "template3";
+    cardTemplate?: "template1" | "template2" | "template3" | "template4";
   }
 ): Promise<CustomerDocument | null> {
   customerCache.delete(telegramUserId);
@@ -313,7 +313,7 @@ export async function deleteCustomer(
 
 export async function updateCustomerCardTemplate(
   telegramUserId: number,
-  cardTemplate: "template1" | "template2" | "template3"
+  cardTemplate: "template1" | "template2" | "template3" | "template4"
 ): Promise<CustomerDocument | null> {
   customerCache.delete(telegramUserId);
   const col = await getCustomersCollection();

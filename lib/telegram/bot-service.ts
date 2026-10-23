@@ -595,7 +595,7 @@ export async function handleTelegramUpdate(update: any) {
 
     if (cbData && cbData.startsWith("set_template:")) {
       const chosen = cbData.split(":")[1] as CardTemplateId;
-      if (["template1", "template2", "template3"].includes(chosen)) {
+      if (["template1", "template2", "template3", "template4"].includes(chosen)) {
         await updateCustomerCardTemplate(cbUserId, chosen).catch(() => null);
         updateSession(cbUserId, { cardTemplate: chosen });
         await answerTelegramCallbackQuery(cbId, `Selected ${chosen.toUpperCase()}`);
@@ -604,6 +604,7 @@ export async function handleTelegramUpdate(update: any) {
           template1: "Template 1 (Classic Standard)",
           template2: "Template 2 (Modern Blue Header)",
           template3: "Template 3 (Minimal)",
+          template4: "Template 4 (Custom Front 4)",
         };
 
         if (cbChatId) {
@@ -712,6 +713,7 @@ export async function handleTelegramUpdate(update: any) {
       template1: "Template 1 (Classic Standard)",
       template2: "Template 2 (Modern Blue Header)",
       template3: "Template 3 (Minimal)",
+      template4: "Template 4 (Custom Front 4)",
     };
 
     const templateMarkup = {
@@ -732,6 +734,12 @@ export async function handleTelegramUpdate(update: any) {
           {
             text: `${currentTemplate === "template3" ? "✅ " : ""}3. Minimal`,
             callback_data: "set_template:template3",
+          },
+        ],
+        [
+          {
+            text: `${currentTemplate === "template4" ? "✅ " : ""}4. Template 4`,
+            callback_data: "set_template:template4",
           },
         ],
       ],

@@ -229,7 +229,7 @@ function isolateSubjectClean(srcCanvas: any) {
   return srcCanvas;
 }
 
-export type CardTemplateId = "template1" | "template2" | "template3";
+export type CardTemplateId = "template1" | "template2" | "template3" | "template4";
 
 const TEMPLATE_CONFIG: Record<CardTemplateId, { front: string; back: string }> = {
   template1: {
@@ -244,6 +244,11 @@ const TEMPLATE_CONFIG: Record<CardTemplateId, { front: string; back: string }> =
     // front3.png has an open photo area (no opaque slot fill) so that the
     // transparent portrait produced by isolateSubjectClean shows through cleanly.
     front: "image.png",
+    back: "card-back-template.png",
+  },
+  template4: {
+
+    front: "front4.png",
     back: "card-back-template.png",
   },
 };
@@ -290,7 +295,7 @@ async function getBackTemplateImage(templateId: CardTemplateId = "template1"): P
 
 // Background prewarm to guarantee instant 0ms disk latency on any template
 export function prewarmTemplates() {
-  const ids: CardTemplateId[] = ["template1", "template2", "template3"];
+  const ids: CardTemplateId[] = ["template1", "template2", "template3", "template4"];
   for (const id of ids) {
     getFrontTemplateImage(id).catch(() => { });
     getBackTemplateImage(id).catch(() => { });
@@ -364,10 +369,10 @@ export async function renderFrontCardCanvas(
   if (data.photoUrl) {
     const rawPhotoImg = await loadServerImage(data.photoUrl);
     if (rawPhotoImg) {
-      // 1. Perform background removal for template2 (Modern Blue) and template3 (Minimal).
+      // 1. Perform background removal for template2 (Modern Blue), template3 (Minimal), and template4.
       // Classic Standard (template1) keeps the original portrait photo as completed.
       let photoSource = rawPhotoImg;
-      if (templateId === "template2" || templateId === "template3") {
+      if (templateId === "template2" || templateId === "template3" || templateId === "template4") {
         const cleanPhotoCanvas = createCanvas(rawPhotoImg.width, rawPhotoImg.height);
         const cleanCtx = cleanPhotoCanvas.getContext("2d");
         cleanCtx.imageSmoothingEnabled = true;
@@ -413,10 +418,10 @@ export async function renderFrontCardCanvas(
         pCtx.drawImage(photoDrawable, offX, offY, drawW, drawH);
 
         ctx.drawImage(pCanvas, photoX, photoY);
-      } else if (templateId === "template3") {
-        // Minimal: Classic Standard card layout with Modern Blue transparent subject rendering.
+      } else if (templateId === "template3" || templateId === "template4") {
+        // Minimal / Template 4: Classic Standard card layout with Modern Blue transparent subject rendering.
         // Uses an intermediate canvas (same pipeline as template2) so transparent pixels from
-        // isolateSubjectClean reveal front3.png behind them instead of compositing onto an
+        // isolateSubjectClean reveal the template front behind them instead of compositing onto an
         // opaque card-slot fill.
         const targetW = 302;
         const targetH = 430;
@@ -449,7 +454,7 @@ export async function renderFrontCardCanvas(
   const expiryGregFormatted = formatGregorianDate(data.dateOfExpiryGreg);
   const textColor = "#000000";
 
-  if (templateId === "template1" || templateId === "template3") {
+  if (templateId === "template1" || templateId === "template3" || templateId === "template4") {
     ctx.fillStyle = "#020617";
     ctx.textAlign = "left";
     ctx.font = "bold 26px NotoSansEthiopic, Arial, sans-serif";
@@ -535,7 +540,7 @@ export async function renderFrontCardCanvas(
 
   // 4. Ghost photo - clean, sharp transparent portrait proportioned to match Reference 2
   if (photoDrawable) {
-    if (templateId === "template1" || templateId === "template3") {
+    if (templateId === "template1" || templateId === "template3" || templateId === "template4") {
       ctx.save();
       ctx.globalAlpha = 0.75;
       drawRoundedRect(ctx, 830, 460, 113, 134, 8);
@@ -625,7 +630,7 @@ export async function renderBackCardCanvas(
   const qrSource = data.qrCodeUrl || "/assets/target-qr.png";
   const qrImg = await loadServerImage(qrSource);
 
-  if (templateId === "template1" || templateId === "template3") {
+  if (templateId === "template1" || templateId === "template3" || templateId === "template4") {
     ctx.fillStyle = "#020617";
     ctx.textAlign = "left";
     ctx.font = "bold 25px Arial, sans-serif";
