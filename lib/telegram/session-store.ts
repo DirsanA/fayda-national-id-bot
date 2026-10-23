@@ -84,44 +84,52 @@ function loadSessions(): Map<number, UserSession> {
   return map;
 }
 
-// Asynchronous debounced session persistence to keep Node event loop unblocked
-let saveTimeout: NodeJS.Timeout | null = null;
-let isSaving = false;
+// Attach in-memory session map to globalThis so Next.js hot module reloads (HMR) during dev do not wipe active sessions
+const globalForSessions = globalThis as unknown as {
+  inMemorySessions?: Map<number, UserSession>;
+  saveTimeout?: NodeJS.Timeout | null;
+  isSaving?: boolean;
+};
 
-function scheduleSaveSessions() {
-  if (saveTimeout) return;
-  saveTimeout = setTimeout(async () => {
-    saveTimeout = null;
-    if (isSaving) {
-      // Reschedule if another save is actively in flight
-      scheduleSaveSessions();
-      return;
-    }
-    isSaving = true;
-    try {
-      ensureStorageDir();
-      const now = Date.now();
-      const validSessions = Array.from(inMemorySessions.values()).filter(
-        (s) => now - s.updatedAt < SESSION_TTL_MS
-      );
-      await fs.promises.writeFile(
-        SESSIONS_FILE,
-        JSON.stringify(validSessions),
-        "utf-8"
-      );
-    } catch (err) {
-      console.error("Failed to save sessions to file:", err);
-    } finally {
-      isSaving = false;
-    }
-  }, 100);
+if (!globalForSessions.inMemorySessions) {
+  globalForSessions.inMemorySessions = loadSessions();
+}
+const inMemorySessions = globalForSessions.inMemorySessions;
+
+function saveSessionsNow() {
+  try {
+    ensureStorageDir();
+    const now = Date.now();
+    const validSessions = Array.from(inMemorySessions.values()).filter(
+      (s) => now - s.updatedAt < SESSION_TTL_MS
+    );
+    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(validSessions), "utf-8");
+  } catch (err) {
+    console.error("Failed to write sessions to file:", err);
+  }
 }
 
-let inMemorySessions = loadSessions();
+function scheduleSaveSessions() {
+  if (globalForSessions.saveTimeout) return;
+  globalForSessions.saveTimeout = setTimeout(async () => {
+    globalForSessions.saveTimeout = null;
+    saveSessionsNow();
+  }, 100);
+}
 
 export function getSession(userId: number, chatId: number): UserSession {
   const now = Date.now();
   let session = inMemorySessions.get(userId);
+
+  // If not found in memory, try refreshing from file before creating a blank IDLE session
+  if (!session) {
+    const fileSessions = loadSessions();
+    const fromFile = fileSessions.get(userId);
+    if (fromFile && now - fromFile.updatedAt <= SESSION_TTL_MS) {
+      session = fromFile;
+      inMemorySessions.set(userId, session);
+    }
+  }
 
   if (!session || now - session.updatedAt > SESSION_TTL_MS) {
     session = {
@@ -156,7 +164,14 @@ export function updateSession(userId: number, partial: Partial<UserSession>): Us
   };
 
   inMemorySessions.set(userId, updated);
-  scheduleSaveSessions();
+
+  // For critical OTP state transitions, save immediately to disk so hot-reloads or restarts never lose OTP state
+  if (partial.state === "WAITING_FOR_OTP" || partial.state === "WAITING_FOR_FAN" || partial.state === "VERIFYING_OTP") {
+    saveSessionsNow();
+  } else {
+    scheduleSaveSessions();
+  }
+
   return updated;
 }
 
