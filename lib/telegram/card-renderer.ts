@@ -444,8 +444,8 @@ export async function renderFrontCardCanvas(
         ctx.drawImage(pCanvas, photoX, photoY);
       } else if (templateId === "template4") {
         // Template 4: Decreased photo size with preserved natural aspect ratio so portrait does not look stretched/tall
-        const targetW = 275;
-        const targetH = 360;
+        const targetW = 265;
+        const targetH = 340;
         const photoX = 85;
         const photoY = 175;
 
