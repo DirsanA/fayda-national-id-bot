@@ -63,7 +63,7 @@ function getPaymentConfig(): PaymentConfig {
   const accountNumber = (process.env.PAYMENT_ACCOUNT_NUMBER || process.env.PAYMENT_ACCOUNT_NO || "").trim();
   const accountHolder = (process.env.PAYMENT_ACCOUNT_HOLDER || process.env.PAYMENT_ACCOUNT_NAME || "").trim();
   const rateInfo = (process.env.PAYMENT_RATE_INFO || process.env.PAYMENT_RATE || "").trim();
-  const adminUsername = (process.env.ADMIN_TELEGRAM_USERNAME || "Dirsan_A").trim().replace(/^@/, "");
+  const adminUsername = (process.env.ADMIN_TELEGRAM_USERNAME || "AIassiter").trim().replace(/^@/, "");
 
   const isConfigured = Boolean(bankName && accountNumber && accountHolder);
 
@@ -78,98 +78,39 @@ function getPaymentConfig(): PaymentConfig {
 }
 
 function buildRechargeInstructionsMessage(userId: number): string {
-  const config = getPaymentConfig();
-  const safeAdminUsername = config.adminUsername.replace(/[_*`\[\]]/g, "\\$&");
-
-  if (!config.isConfigured) {
-    return (
-      "💳 *Account Recharge & Top‑up Instructions*\n\n" +
-      "⚠️ *Payment account details are currently being configured by administration.*\n\n" +
-      "Please contact our administrator directly to receive official payment details and pricing:\n\n" +
-      `👤 *Admin Contact:* @${safeAdminUsername}\n` +
-      `🆔 *Your Telegram User ID:* \`${userId}\`\n\n` +
-      "📋 *How to complete your recharge:*\n" +
-      `1. Send a message to @${safeAdminUsername} for payment details.\n` +
-      "2. Transfer your desired amount.\n" +
-      "3. Send your payment screenshot or PDF receipt directly into this chat anytime (you can include your paid amount in the caption).\n\n" +
-      "⏳ Our team will manually verify the payment and credit your balance in the admin dashboard."
-    );
-  }
-
-  const safeBankName = config.bankName.replace(/[_*`\[\]]/g, "\\$&");
-  const safeAccountHolder = config.accountHolder.replace(/[_*`\[\]]/g, "\\$&");
-  const safeRateInfo = config.rateInfo ? config.rateInfo.replace(/[_*`\[\]]/g, "\\$&") : "";
-
-  let msg =
-    "💳 *Account Recharge & Verification Top‑up*\n\n" +
-    "To top up your Fayda ID verification balance, please transfer your payment using the details below:\n\n" +
-    `🏦 *Payment Provider / Bank:* ${safeBankName}\n` +
-    `👤 *Account Holder Name:* ${safeAccountHolder}\n` +
-    `🔢 *Account Number:* \`${config.accountNumber}\` _(tap to copy)_\n`;
-
-  if (safeRateInfo) {
-    msg += `💵 *Rate / Pricing:* ${safeRateInfo}\n`;
-  }
-
-  msg +=
-    "\n📋 *Next Steps:*\n" +
-    "1. Transfer the desired payment amount to the account above.\n" +
-    "2. Upload your payment screenshot or official PDF receipt directly into this chat anytime (you can mention the paid amount in the caption).\n" +
-    "3. Our administration will verify the receipt and manually update your verification balance in the system.\n\n" +
-    `💬 For any questions or instant confirmation, contact: @${safeAdminUsername}`;
-
-  return msg;
+  return (
+    "💳 *Account Recharge & Top‑up Instructions*\n\n" +
+    "🏦 *Official Payment Accounts:*\n" +
+    "• *Awash Bank:* `01320836453300` _(tap to copy)_\n" +
+    "• *Telebirr:* `0917521765` _(tap to copy)_\n" +
+    "👤 *Account Name:* Yosef Girma Tufa\n\n" +
+    "📌 *Pricing:* 1 Point = 10 Birr\n\n" +
+    `🆔 *Your Telegram User ID:* \`${userId}\`\n\n` +
+    "📋 *How to complete your recharge:*\n" +
+    "1. Transfer the amount you want to pay using one of the accounts above (1 Point = 10 Birr).\n" +
+    "2. Send your payment screenshot or PDF receipt directly into this chat anytime (include your Telegram User ID or paid amount in the caption).\n\n" +
+    "👤 *Admin Contact (For support):* @AIassiter\n\n" +
+    "⏳ Our team will manually verify the payment and credit your balance in the admin dashboard."
+  );
 }
 
 function buildInsufficientBalanceMessage(userId: number): string {
-  const config = getPaymentConfig();
-  const safeAdminUsername = config.adminUsername.replace(/[_*`\[\]]/g, "\\$&");
-
-  let msg =
+  return (
     "⚠️ *Insufficient Balance*\n\n" +
     "Your verification balance is insufficient to print your ID card.\n\n" +
     "💳 *Please recharge your account to continue.*\n\n" +
-    "Follow the payment instructions below and upload your payment receipt directly into this chat. Your payment will be reviewed manually.\n\n";
-
-  if (!config.isConfigured) {
-    const missingFields: string[] = [];
-    if (!config.bankName) missingFields.push("Bank / Provider Name");
-    if (!config.accountNumber) missingFields.push("Account Number");
-    if (!config.accountHolder) missingFields.push("Account Holder Name");
-
-    msg +=
-      "⚠️ *Payment account details are currently not fully configured by administration.*\n" +
-      `_(Missing configuration: ${missingFields.join(", ")})_\n\n` +
-      "Please contact our administrator directly to receive official payment details and pricing:\n\n" +
-      `👤 *Admin Contact:* @${safeAdminUsername}\n` +
-      `🆔 *Your Telegram User ID:* \`${userId}\`\n\n` +
-      "📋 *How to recharge:*\n" +
-      `1. Send a message to @${safeAdminUsername} for payment details.\n` +
-      "2. Transfer your desired amount.\n" +
-      "3. Send your payment screenshot or PDF receipt directly into this chat anytime.";
-  } else {
-    const safeBankName = config.bankName.replace(/[_*`\[\]]/g, "\\$&");
-    const safeAccountHolder = config.accountHolder.replace(/[_*`\[\]]/g, "\\$&");
-    const safeRateInfo = config.rateInfo ? config.rateInfo.replace(/[_*`\[\]]/g, "\\$&") : "";
-
-    msg +=
-      `🏦 *Payment Provider / Bank:* ${safeBankName}\n` +
-      `👤 *Account Holder Name:* ${safeAccountHolder}\n` +
-      `🔢 *Account Number:* \`${config.accountNumber}\` _(tap to copy)_\n`;
-
-    if (safeRateInfo) {
-      msg += `💵 *Rate / Pricing:* ${safeRateInfo}\n`;
-    }
-
-    msg +=
-      "\n📋 *Next Steps:*\n" +
-      "1. Transfer your desired payment amount to the account above.\n" +
-      "2. Send your payment screenshot or official PDF receipt directly into this chat anytime (you can include your paid amount in the caption).\n" +
-      "3. Our administration will review your receipt and credit your balance manually.\n\n" +
-      `💬 For questions or fast assistance: @${safeAdminUsername}`;
-  }
-
-  return msg;
+    "🏦 *Official Payment Accounts:*\n" +
+    "• *Awash Bank:* `01320836453300` _(tap to copy)_\n" +
+    "• *Telebirr:* `0917521765` _(tap to copy)_\n" +
+    "👤 *Account Name:* Yosef Girma Tufa\n\n" +
+    "📌 *Pricing:* 1 Point = 10 Birr\n\n" +
+    `🆔 *Your Telegram User ID:* \`${userId}\`\n\n` +
+    "📋 *How to recharge:*\n" +
+    "1. Transfer the amount you want to pay using one of the accounts above (1 Point = 10 Birr).\n" +
+    "2. Send your payment screenshot or PDF receipt directly into this chat anytime (include your Telegram User ID or paid amount in the caption).\n\n" +
+    "👤 *Admin Contact (For support):* @AIassiter\n\n" +
+    "⏳ Our team will manually verify the payment and credit your balance in the admin dashboard."
+  );
 }
 
 export const MAIN_MENU_KEYBOARD = {
@@ -768,7 +709,7 @@ export async function handleTelegramUpdate(update: any) {
     // If the customer has no registered account, display a clear message asking them to contact the admin
     if (!customer) {
       const config = getPaymentConfig();
-      const safeAdminUsername = (config.adminUsername || "Dirsan_A").replace(/[_*`\[\]]/g, "\\$&");
+      const safeAdminUsername = (config.adminUsername || "AIassiter").replace(/[_*`\[\]]/g, "\\$&");
       const notRegisteredMsg =
         `⚠️ *Account Not Registered*\n\n` +
         `Your Telegram account is not yet registered in our verification system.\n\n` +
@@ -856,7 +797,7 @@ export async function handleTelegramUpdate(update: any) {
         return;
       }
 
-      const adminUsername = (process.env.ADMIN_TELEGRAM_USERNAME || "Dirsan_A").trim().replace(/^@/, "");
+      const adminUsername = (process.env.ADMIN_TELEGRAM_USERNAME || "AIassiter").trim().replace(/^@/, "");
 
       // Check customer registration and balance
       const customer = await findCustomerByTelegramId(userId).catch(() => null);

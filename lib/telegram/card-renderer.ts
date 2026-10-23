@@ -101,23 +101,23 @@ function isolateSubjectClean(srcCanvas: any) {
   const imgData = ctx.getImageData(0, 0, w, h);
   const data = imgData.data;
 
-  // 1. Check if image already has transparent background in corners
+  // 1. Check if corners are already transparent
   let transparentCorners = 0;
   const cornerChecks = [
     [0, 0], [w - 1, 0], [0, 5], [w - 1, 5],
     [Math.floor(w * 0.1), 0], [Math.floor(w * 0.9), 0]
   ];
   for (const [cx, cy] of cornerChecks) {
-    if (data[(cy * w + cx) * 4 + 3] < 50) transparentCorners++;
+    if (data[(cy * w + cx) * 4 + 3] < 30) transparentCorners++;
   }
-  if (transparentCorners >= 3) {
+  if (transparentCorners >= 4) {
     return srcCanvas;
   }
 
-  // 2. Sample background color across top edge and upper corners
+  // 2. Sample background color across upper corners and edges
   let bgR = 0, bgG = 0, bgB = 0, bgCount = 0;
-  const sampleW = Math.max(4, Math.floor(w * 0.15));
-  const sampleH = Math.max(4, Math.floor(h * 0.08));
+  const sampleW = Math.max(4, Math.floor(w * 0.20));
+  const sampleH = Math.max(4, Math.floor(h * 0.12));
 
   for (let y = 0; y < sampleH; y++) {
     for (let x = 0; x < sampleW; x++) {
@@ -128,9 +128,6 @@ function isolateSubjectClean(srcCanvas: any) {
     }
   }
   bgR /= bgCount; bgG /= bgCount; bgB /= bgCount;
-
-  // If background is very dark, skip removal
-  if ((bgR + bgG + bgB) / 3 < 80) return srcCanvas;
 
   let sumSq = 0;
   for (let y = 0; y < sampleH; y++) {
@@ -143,27 +140,31 @@ function isolateSubjectClean(srcCanvas: any) {
     }
   }
   const stdDev = Math.sqrt(sumSq / bgCount);
-  const distThresh = Math.max(26, Math.min(54, stdDev * 2.8 + 18));
-  const solidThresh = distThresh * 0.72;
+  // Adaptive distance threshold: wider tolerance to catch subtle gradients/shadows in background
+  const distThresh = Math.max(34, Math.min(75, stdDev * 3.2 + 25));
+  const solidThresh = distThresh * 0.65;
 
   const colorDist = (r: number, g: number, b: number) => Math.hypot(r - bgR, g - bgG, b - bgB);
 
+  // Human skin / hair detection guard so face/hair is never removed
   const isHumanForeground = (r: number, g: number, b: number) => {
-    if (r < 75 && g < 75 && b < 75) return true; // Dark hair
-    if (r > b + 28 && r > 85 && g > 60) return true; // Skin
+    // Dark hair/eyebrows
+    if (r < 65 && g < 65 && b < 65 && colorDist(r, g, b) > solidThresh) return true;
+    // Common human skin tones (warm tones where Red dominates Blue)
+    if (r > b + 25 && r > 70 && g > 50 && r >= g) return true;
     return false;
   };
 
   const visited = new Uint8Array(w * h);
   const queue = new Int32Array(w * h);
   let qHead = 0, qTail = 0;
-  const maxDepthY = Math.floor(h * 0.80);
+  const maxDepthY = Math.floor(h * 0.88);
 
   // Seed top edge
   for (let x = 0; x < w; x++) {
     const idx = (0 * w + x) * 4;
     const r = data[idx], g = data[idx + 1], b = data[idx + 2];
-    if (!isHumanForeground(r, g, b) && colorDist(r, g, b) < distThresh) {
+    if (!isHumanForeground(r, g, b) && colorDist(r, g, b) <= distThresh) {
       visited[x] = 1;
       queue[qTail++] = x;
     }
@@ -173,13 +174,13 @@ function isolateSubjectClean(srcCanvas: any) {
   for (let y = 1; y < maxDepthY; y++) {
     const pL = y * w + 0;
     const idxL = pL * 4;
-    if (!visited[pL] && !isHumanForeground(data[idxL], data[idxL + 1], data[idxL + 2]) && colorDist(data[idxL], data[idxL + 1], data[idxL + 2]) < distThresh) {
+    if (!visited[pL] && !isHumanForeground(data[idxL], data[idxL + 1], data[idxL + 2]) && colorDist(data[idxL], data[idxL + 1], data[idxL + 2]) <= distThresh) {
       visited[pL] = 1;
       queue[qTail++] = pL;
     }
     const pR = y * w + (w - 1);
     const idxR = pR * 4;
-    if (!visited[pR] && !isHumanForeground(data[idxR], data[idxR + 1], data[idxR + 2]) && colorDist(data[idxR], data[idxR + 1], data[idxR + 2]) < distThresh) {
+    if (!visited[pR] && !isHumanForeground(data[idxR], data[idxR + 1], data[idxR + 2]) && colorDist(data[idxR], data[idxR + 1], data[idxR + 2]) <= distThresh) {
       visited[pR] = 1;
       queue[qTail++] = pR;
     }
@@ -203,7 +204,7 @@ function isolateSubjectClean(srcCanvas: any) {
       if (np >= 0 && !visited[np]) {
         const nIdx = np * 4;
         const nr = data[nIdx], ng = data[nIdx + 1], nb = data[nIdx + 2];
-        if (!isHumanForeground(nr, ng, nb) && colorDist(nr, ng, nb) < distThresh) {
+        if (!isHumanForeground(nr, ng, nb) && colorDist(nr, ng, nb) <= distThresh) {
           visited[np] = 1;
           queue[qTail++] = np;
         }
@@ -217,7 +218,7 @@ function isolateSubjectClean(srcCanvas: any) {
       const idx = p * 4;
       const d = colorDist(data[idx], data[idx + 1], data[idx + 2]);
       if (d <= solidThresh) {
-        data[idx + 3] = 0; // True transparent
+        data[idx + 3] = 0; // Completely transparent
       } else {
         const factor = (d - solidThresh) / (distThresh - solidThresh);
         data[idx + 3] = Math.round(Math.max(0, Math.min(255, factor * 255)));
