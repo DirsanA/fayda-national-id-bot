@@ -16,6 +16,18 @@ interface Customer {
   updatedAt: string;
 }
 
+interface Announcement {
+  id: string;
+  title: string;
+  message: string;
+  status: "draft" | "published";
+  publishedAt?: string | null;
+  sentCount?: number;
+  totalTarget?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export default function AdminPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,6 +50,16 @@ export default function AdminPage() {
   const [adjustingId, setAdjustingId] = useState<number | null>(null);
   const [adjustInputs, setAdjustInputs] = useState<Record<number, string>>({});
 
+  // Announcement states
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [announcementsLoading, setAnnouncementsLoading] = useState(false);
+  const [announcementSubmitting, setAnnouncementSubmitting] = useState(false);
+  const [announcementDeletingId, setAnnouncementDeletingId] = useState<string | null>(null);
+  const [announcementPublishingId, setAnnouncementPublishingId] = useState<string | null>(null);
+  const [editingAnnouncementId, setEditingAnnouncementId] = useState<string | null>(null);
+  const [announcementTitle, setAnnouncementTitle] = useState("");
+  const [announcementMessage, setAnnouncementMessage] = useState("");
+
   // Live Default Admin Fayda Provider Balance State
   const [providerBalance, setProviderBalance] = useState<{
     liveProviderPoints: number;
@@ -53,6 +75,7 @@ export default function AdminPage() {
   useEffect(() => {
     fetchCustomers();
     fetchAdminProviderBalance();
+    fetchAnnouncements();
   }, []);
 
   // Auto-dismiss floating popup message after 4.5 seconds
@@ -178,6 +201,147 @@ export default function AdminPage() {
       setError(err.message || "Error loading customers");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function fetchAnnouncements() {
+    setAnnouncementsLoading(true);
+    try {
+      const res = await fetch("/api/admin/announcements");
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
+        setAnnouncements(data.announcements || []);
+      }
+    } catch {
+      // Non-fatal
+    } finally {
+      setAnnouncementsLoading(false);
+    }
+  }
+
+  function handleStartEditAnnouncement(ann: Announcement) {
+    setEditingAnnouncementId(ann.id);
+    setAnnouncementTitle(ann.title);
+    setAnnouncementMessage(ann.message);
+    const el = document.getElementById("announcement-section");
+    if (el) el.scrollIntoView({ behavior: "smooth" });
+  }
+
+  function handleCancelEditAnnouncement() {
+    setEditingAnnouncementId(null);
+    setAnnouncementTitle("");
+    setAnnouncementMessage("");
+  }
+
+  async function handleSaveAnnouncement(publishNow: boolean) {
+    if (!announcementTitle.trim() || !announcementMessage.trim()) {
+      setError("Please provide both an announcement title and message content.");
+      return;
+    }
+
+    setAnnouncementSubmitting(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const isEditing = Boolean(editingAnnouncementId);
+      const url = "/api/admin/announcements";
+      const method = isEditing ? "PUT" : "POST";
+      const body = {
+        ...(isEditing ? { id: editingAnnouncementId } : {}),
+        title: announcementTitle.trim(),
+        message: announcementMessage.trim(),
+        publishNow,
+      };
+
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.message || "Failed to save announcement.");
+      }
+
+      setSuccessMessage(data.message || (publishNow ? "Announcement published!" : "Draft saved!"));
+      handleCancelEditAnnouncement();
+      await fetchAnnouncements();
+    } catch (err: any) {
+      setError(err?.message || "Error processing announcement.");
+    } finally {
+      setAnnouncementSubmitting(false);
+    }
+  }
+
+  async function handlePublishExistingAnnouncement(ann: Announcement) {
+    if (
+      !window.confirm(
+        `Are you sure you want to broadcast "${ann.title}" to all registered Telegram customers now?`
+      )
+    ) {
+      return;
+    }
+
+    setAnnouncementPublishingId(ann.id);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const res = await fetch("/api/admin/announcements", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: ann.id,
+          title: ann.title,
+          message: ann.message,
+          publishNow: true,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.message || "Failed to publish announcement.");
+      }
+
+      setSuccessMessage(data.message || "Announcement published successfully.");
+      await fetchAnnouncements();
+    } catch (err: any) {
+      setError(err?.message || "Error publishing announcement.");
+    } finally {
+      setAnnouncementPublishingId(null);
+    }
+  }
+
+  async function handleDeleteAnnouncement(id: string, title: string) {
+    if (!window.confirm(`Are you sure you want to delete announcement "${title}"?`)) {
+      return;
+    }
+
+    setAnnouncementDeletingId(id);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const res = await fetch(`/api/admin/announcements?id=${id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.message || "Failed to delete announcement.");
+      }
+
+      setSuccessMessage(data.message || "Announcement deleted successfully.");
+      if (editingAnnouncementId === id) {
+        handleCancelEditAnnouncement();
+      }
+      await fetchAnnouncements();
+    } catch (err: any) {
+      setError(err?.message || "Error deleting announcement.");
+    } finally {
+      setAnnouncementDeletingId(null);
     }
   }
 
@@ -680,6 +844,179 @@ export default function AdminPage() {
               </button>
             </div>
           </form>
+        </section>
+
+        {/* Announcements Section */}
+        <section
+          id="announcement-section"
+          className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6 shadow-xl backdrop-blur-md transition-all"
+        >
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/60 pb-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-base">
+                  📢
+                </span>
+                <h2 className="text-base sm:text-lg font-semibold text-white">
+                  {editingAnnouncementId ? "✏️ Edit Announcement" : "📢 Bot Announcements"}
+                </h2>
+                {editingAnnouncementId && (
+                  <span className="rounded-full bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.5 text-[11px] sm:text-xs font-semibold text-cyan-400">
+                    Editing
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-xs text-slate-400">
+                Write, publish, edit, and delete announcements. Published announcements are sent directly to customer Telegram chats.
+              </p>
+            </div>
+            {editingAnnouncementId && (
+              <button
+                type="button"
+                onClick={handleCancelEditAnnouncement}
+                className="inline-flex min-h-[32px] items-center text-xs font-medium text-slate-400 hover:text-white transition-colors"
+              >
+                ✕ Cancel Edit
+              </button>
+            )}
+          </div>
+
+          {/* Announcement Composer Form */}
+          <div className="space-y-3 rounded-xl border border-slate-800/80 bg-slate-950/60 p-3.5 sm:p-4">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-300">
+                Announcement Title <span className="text-cyan-400">*</span>
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. System Maintenance Notice / New Feature Available"
+                value={announcementTitle}
+                onChange={(e) => setAnnouncementTitle(e.target.value)}
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3.5 py-2 text-sm text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none transition-colors"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-300">
+                Message Content <span className="text-cyan-400">*</span>
+              </label>
+              <textarea
+                rows={3}
+                placeholder="Write your announcement message here. Supports basic text and lines..."
+                value={announcementMessage}
+                onChange={(e) => setAnnouncementMessage(e.target.value)}
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3.5 py-2 text-sm text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none transition-colors"
+              />
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+              {editingAnnouncementId && (
+                <button
+                  type="button"
+                  onClick={handleCancelEditAnnouncement}
+                  className="inline-flex min-h-[38px] items-center justify-center rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 transition-colors"
+                >
+                  Cancel
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={announcementSubmitting}
+                onClick={() => handleSaveAnnouncement(false)}
+                className="inline-flex min-h-[38px] items-center justify-center rounded-lg border border-slate-700 bg-slate-800 px-4 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-700 disabled:opacity-50 transition-colors"
+              >
+                {announcementSubmitting ? "Saving..." : editingAnnouncementId ? "💾 Save Changes" : "📝 Save as Draft"}
+              </button>
+              <button
+                type="button"
+                disabled={announcementSubmitting}
+                onClick={() => handleSaveAnnouncement(true)}
+                className="inline-flex min-h-[38px] items-center justify-center gap-1.5 rounded-lg bg-cyan-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-cyan-500 active:scale-[0.98] disabled:opacity-50 transition-all shadow-md"
+              >
+                {announcementSubmitting ? "Publishing..." : "🚀 Publish & Broadcast to Bot"}
+              </button>
+            </div>
+          </div>
+
+          {/* Announcements List */}
+          <div className="mt-4">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Announcement History ({announcements.length})
+            </h3>
+            {announcementsLoading ? (
+              <div className="py-6 text-center text-xs text-slate-400">Loading announcements...</div>
+            ) : announcements.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-800 py-6 text-center text-xs text-slate-500">
+                No announcements created yet. Compose your first announcement above.
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {announcements.map((ann) => (
+                  <div
+                    key={ann.id}
+                    className="flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-950/40 p-3.5 sm:flex-row sm:items-center sm:justify-between hover:border-slate-700 transition-colors"
+                  >
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-sm text-white break-words">
+                          {ann.title}
+                        </span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                            ann.status === "published"
+                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
+                              : "bg-slate-800 text-slate-400 border border-slate-700"
+                          }`}
+                        >
+                          {ann.status}
+                        </span>
+                        {ann.status === "published" && (
+                          <span className="text-[11px] text-slate-400">
+                            (Sent to {ann.sentCount ?? 0}/{ann.totalTarget ?? 0} users)
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-300 whitespace-pre-wrap line-clamp-2">
+                        {ann.message}
+                      </p>
+                      <div className="text-[10px] text-slate-500">
+                        Created: {new Date(ann.createdAt).toLocaleString()}
+                        {ann.publishedAt && ` • Published: ${new Date(ann.publishedAt).toLocaleString()}`}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5 self-end sm:self-center">
+                      {ann.status === "draft" && (
+                        <button
+                          type="button"
+                          disabled={announcementPublishingId === ann.id}
+                          onClick={() => handlePublishExistingAnnouncement(ann)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-xs font-semibold text-cyan-400 hover:bg-cyan-500/20 active:scale-95 disabled:opacity-50 transition-colors"
+                          title="Publish and send to Telegram bot users"
+                        >
+                          {announcementPublishingId === ann.id ? "Publishing..." : "🚀 Publish"}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleStartEditAnnouncement(ann)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs font-semibold text-slate-300 hover:bg-slate-700 active:scale-95 transition-colors"
+                        title="Edit announcement"
+                      >
+                        ✏️ Edit
+                      </button>
+                      <button
+                        type="button"
+                        disabled={announcementDeletingId === ann.id}
+                        onClick={() => handleDeleteAnnouncement(ann.id, ann.title)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-400 hover:bg-red-500/20 active:scale-95 disabled:opacity-50 transition-colors"
+                        title="Delete announcement"
+                      >
+                        {announcementDeletingId === ann.id ? "Deleting..." : "🗑️ Delete"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </section>
 
         {/* Customers Section */}
