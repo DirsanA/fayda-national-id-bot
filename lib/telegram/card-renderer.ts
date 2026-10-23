@@ -418,11 +418,8 @@ export async function renderFrontCardCanvas(
         pCtx.drawImage(photoDrawable, offX, offY, drawW, drawH);
 
         ctx.drawImage(pCanvas, photoX, photoY);
-      } else if (templateId === "template3" || templateId === "template4") {
-        // Minimal / Template 4: Classic Standard card layout with Modern Blue transparent subject rendering.
-        // Uses an intermediate canvas (same pipeline as template2) so transparent pixels from
-        // isolateSubjectClean reveal the template front behind them instead of compositing onto an
-        // opaque card-slot fill.
+      } else if (templateId === "template3") {
+        // Minimal: Classic Standard card layout with Modern Blue transparent subject rendering.
         const targetW = 302;
         const targetH = 430;
         const photoX = 73;
@@ -437,6 +434,30 @@ export async function renderFrontCardCanvas(
         let drawW = targetW;
         let drawH = targetW / aspect;
         if (drawH < targetH) {
+          drawH = targetH;
+          drawW = targetH * aspect;
+        }
+        const offX = (targetW - drawW) / 2;
+        const offY = (targetH - drawH) / 2;
+        pCtx.drawImage(photoDrawable, offX, offY, drawW, drawH);
+
+        ctx.drawImage(pCanvas, photoX, photoY);
+      } else if (templateId === "template4") {
+        // Template 4: Decreased photo size with preserved natural aspect ratio so portrait does not look stretched/tall
+        const targetW = 275;
+        const targetH = 360;
+        const photoX = 85;
+        const photoY = 175;
+
+        const pCanvas = createCanvas(targetW, targetH);
+        const pCtx = pCanvas.getContext("2d");
+        pCtx.imageSmoothingEnabled = true;
+
+        // Preserve natural aspect ratio without distortion (contain mode)
+        const aspect = photoDrawable.width / photoDrawable.height;
+        let drawW = targetW;
+        let drawH = targetW / aspect;
+        if (drawH > targetH) {
           drawH = targetH;
           drawW = targetH * aspect;
         }
