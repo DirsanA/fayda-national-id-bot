@@ -243,7 +243,7 @@ const TEMPLATE_CONFIG: Record<CardTemplateId, { front: string; back: string }> =
   template3: {
     // front3.png has an open photo area (no opaque slot fill) so that the
     // transparent portrait produced by isolateSubjectClean shows through cleanly.
-    front: "front3.png",
+    front: "image.png",
     back: "card-back-template.png",
   },
 };
@@ -292,8 +292,8 @@ async function getBackTemplateImage(templateId: CardTemplateId = "template1"): P
 export function prewarmTemplates() {
   const ids: CardTemplateId[] = ["template1", "template2", "template3"];
   for (const id of ids) {
-    getFrontTemplateImage(id).catch(() => {});
-    getBackTemplateImage(id).catch(() => {});
+    getFrontTemplateImage(id).catch(() => { });
+    getBackTemplateImage(id).catch(() => { });
   }
 }
 prewarmTemplates();
@@ -378,7 +378,7 @@ export async function renderFrontCardCanvas(
 
       photoDrawable =
         photoStyle === "bw" ? convertServerImageToGrayscale(photoSource) : photoSource;
-      
+
       if (templateId === "template1") {
         const photoW = 281;
         const photoH = 400;
