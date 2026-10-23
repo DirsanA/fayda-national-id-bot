@@ -494,17 +494,19 @@ export async function renderFrontCardCanvas(
     ctx.font = "bold 23px NotoSansEthiopic, Arial, sans-serif";
     ctx.fillText(`${data.dateOfExpiryEth} | ${expiryGregFormatted}`, 418, 468);
 
-    // Barcode box and FAN
-    const barcodeBoxX = 456;
-    const barcodeBoxY = 496;
-    const barcodeBoxW = 328;
+    // Barcode box and FAN:
+    // Fits perfectly into the preprinted white rectangle [x: 461, y: 498, w: 331, h: 98]
+    const barcodeBoxX = 461;
+    const barcodeBoxY = 498;
+    const barcodeBoxW = 331;
+    const barcodeBoxH = 98;
 
     ctx.fillStyle = "#020617";
-    ctx.font = "bold 22px monospace";
+    ctx.font = "bold 20px monospace";
     ctx.textAlign = "center";
-    ctx.fillText(data.fanNumber, barcodeBoxX + barcodeBoxW / 2, barcodeBoxY + 26);
+    ctx.fillText(data.fanNumber, barcodeBoxX + barcodeBoxW / 2, barcodeBoxY + 28);
     ctx.textAlign = "left";
-    drawCode128Barcode(ctx, data.fanNumber, barcodeBoxX + 10, barcodeBoxY + 34, barcodeBoxW - 20, 52);
+    drawCode128Barcode(ctx, data.fanNumber, barcodeBoxX + 16, barcodeBoxY + 36, barcodeBoxW - 32, 54);
   } else if (templateId === "template2") {
     // 1. PERFECT LINE-BY-LINE ALIGNMENT & SPACING (FRONT):
     // Strict vertical grid line matching preprinted labels at x = 398
