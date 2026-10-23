@@ -687,10 +687,10 @@ export async function renderBackCardCanvas(
     ctx.fillText(data.serialNumber || "65501482", 835, 597);
 
     // QR Code:
-    // Container square bounds: [x: 456, y: 32, w: 526, h: 522], center: (719, 293)
-    // Sized to 506x506 with clean, even ~10px padding on all sides (x: 466, y: 40)
+    // Container square bounds: [x: 457, y: 35, w: 524, h: 517], center: (719, 293.5)
+    // Sized to cleanly fill the preprinted container flush with its borders, leaving no exposed white lines
     if (qrImg) {
-      ctx.drawImage(qrImg, 466, 40, 506, 506);
+      ctx.drawImage(qrImg, 457, 35, 524, 517);
     }
   } else if (templateId === "template2") {
     // 2. PERFECT LINE-BY-LINE ALIGNMENT & SPACING (BACK):
