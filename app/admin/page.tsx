@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 
 interface Customer {
   telegramUserId: number;
@@ -29,6 +30,9 @@ interface Announcement {
 }
 
 export default function AdminPage() {
+  const router = useRouter();
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -72,11 +76,40 @@ export default function AdminPage() {
   const [providerBalanceLoading, setProviderBalanceLoading] = useState(false);
   const [providerBalanceError, setProviderBalanceError] = useState<string | null>(null);
 
+  // Check authentication state on mount
   useEffect(() => {
-    fetchCustomers();
-    fetchAdminProviderBalance();
-    fetchAnnouncements();
-  }, []);
+    try {
+      const auth = localStorage.getItem("admin_auth");
+      if (auth === "true") {
+        setIsAuthenticated(true);
+      } else {
+        setIsAuthenticated(false);
+        router.replace("/admin/login");
+      }
+    } catch {
+      setIsAuthenticated(false);
+      router.replace("/admin/login");
+    }
+  }, [router]);
+
+  // Fetch admin data only when verified
+  useEffect(() => {
+    if (isAuthenticated === true) {
+      fetchCustomers();
+      fetchAdminProviderBalance();
+      fetchAnnouncements();
+    }
+  }, [isAuthenticated]);
+
+  function handleLogout() {
+    try {
+      localStorage.removeItem("admin_auth");
+    } catch {
+      // Ignore
+    }
+    setIsAuthenticated(false);
+    router.replace("/admin/login");
+  }
 
   // Auto-dismiss floating popup message after 4.5 seconds
   useEffect(() => {
@@ -534,6 +567,15 @@ export default function AdminPage() {
     return Math.max(0, providerBalance.liveProviderPoints - totalBalance);
   }, [providerBalance, totalBalance]);
 
+  if (isAuthenticated !== true) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent mb-3" />
+        <p className="text-sm font-medium">Verifying admin session...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 px-3 py-6 text-slate-100 sm:px-6 lg:px-8 relative">
       {/* Floating Action Popup Notification */}
@@ -622,6 +664,17 @@ export default function AdminPage() {
             >
               ← Print Utility
             </a>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg border border-rose-500/40 bg-rose-950/30 px-3.5 py-2 text-xs sm:text-sm font-medium text-rose-300 hover:bg-rose-900/50 hover:text-rose-200 transition-colors touch-manipulation shadow-sm cursor-pointer"
+              title="Log out of Admin Dashboard"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              <span>Logout</span>
+            </button>
           </div>
         </header>
 
